@@ -75,6 +75,11 @@ export default function Operate(p) {
             <button onClick={run('/day2/move-ingress', { monitoring: true, registry: true }, 'Relocate ingress, monitoring and registry to infra nodes?')} disabled={!infra.length || spec.status !== 'installed'}>Move to infra</button>
           </div>
           <div className="card">
+            <h3>Resume interrupted install</h3>
+            <p className="help">If the installer process stopped (timeout, crash, app restart) while the VMs kept booting: waits for bootstrap-complete, removes the bootstrap VM, then waits for install-complete.</p>
+            <button onClick={run('/resume', {}, 'Resume the install from the existing installer state?')} disabled={spec.status === 'installed'}>Resume</button>
+          </div>
+          <div className="card">
             <h3>Push load balancer config</h3>
             <p className="help">Re-render and push the HAProxy files from the current node table.</p>
             <button onClick={run('/lb/push', {})} disabled={spec.lb.mode !== 'haproxy'}>Push HAProxy</button>

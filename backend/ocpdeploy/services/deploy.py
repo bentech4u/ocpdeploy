@@ -121,6 +121,31 @@ def _copy_log(ctx, store):
         ctx.log(f"Installer log saved to logs/{dst.name}")
 
 
+def job_resume(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
+    """Continue an IPI install whose installer process ended early (timeout, crash,
+    app restart) while the VMs kept bootstrapping: wait-for bootstrap-complete,
+    remove the bootstrap VM, wait-for install-complete."""
+    d = str(store.install_dir)
+    if not (store.install_dir / ".openshift_install_state.json").exists():
+        raise RuntimeError("no installer state in install/; nothing to resume")
+    store.set_status("deploying")
+    env = trust_env(store, spec, ctx.log)
+    try:
+        ctx.log("Resuming: waiting for bootstrap-complete")
+        ctx.run([installer(spec), "wait-for", "bootstrap-complete", "--dir", d, "--log-level", "info"], env=env)
+        if spec.install_method == "ipi":
+            ctx.log("Bootstrap complete; removing bootstrap resources")
+            ctx.run([installer(spec), "destroy", "bootstrap", "--dir", d, "--log-level", "info"], env=env, check=False)
+        ctx.log("Waiting for install-complete")
+        ctx.run([installer(spec), "wait-for", "install-complete", "--dir", d, "--log-level", "info"], env=env)
+    except Exception:
+        store.set_status("failed")
+        _copy_log(ctx, store)
+        raise
+    _copy_log(ctx, store)
+    _finish(ctx, store)
+
+
 # ---------------------------------------------------------------- agent
 def _iso_remote_path(spec: ClusterSpec, iso: Path) -> str:
     return f"ocpdeploy/{spec.name}/{iso.name}"

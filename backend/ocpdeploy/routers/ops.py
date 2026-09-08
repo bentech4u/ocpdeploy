@@ -61,6 +61,13 @@ def do_deploy(name: str):
     return _start(s, "deploy", lambda ctx: deploy.job_deploy(ctx, s, spec))
 
 
+@router.post("/resume")
+def do_resume(name: str):
+    s = _store(name)
+    spec = s.load()
+    return _start(s, "resume", lambda ctx: deploy.job_resume(ctx, s, spec))
+
+
 class Confirm(BaseModel):
     confirm: str
 
