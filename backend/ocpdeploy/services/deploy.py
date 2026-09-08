@@ -71,6 +71,16 @@ def _finish(ctx: JobContext, store: ClusterStore):
     store.set_status("installed")
 
 
+def finalize_after_restart(ctx: JobContext, store: ClusterStore, code: int):
+    """Post-step for a deploy that was re-attached after an app restart."""
+    _copy_log(ctx, store)
+    if code == 0 and (store.install_dir / "auth" / "kubeconfig").exists():
+        _finish(ctx, store)
+        ctx.log("Install complete (recovered).")
+    else:
+        store.set_status("failed")
+
+
 # ---------------------------------------------------------------- IPI
 def job_generate(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     ensure_tools(ctx, spec)

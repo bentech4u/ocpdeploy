@@ -131,6 +131,20 @@ def vcenter_check(name: str):
     except Exception as ex:
         res.append({"name": "inventory", "status": "fail", "expected": "", "actual": str(ex)[-200:], "hint": ""})
     try:
+        for hc in vcenter.host_clocks(vc, vc.cluster):
+            off = hc["offset_s"]
+            status = "pass" if abs(off) <= 5 else ("warn" if abs(off) <= 60 else "fail")
+            res.append({"name": f"ESXi clock {hc['host']}", "status": status, "expected": "within 5 s of installer",
+                        "actual": f"{off:+.0f} s", "hint": "" if status == "pass" else
+                        "Nodes inherit the host clock at boot and later step it, which can invalidate freshly issued certificates. "
+                        "Fix: host > Configure > System > Time Configuration > NTP (your DNS/AD server if it serves NTP, or pool.ntp.org), start the service."})
+            res.append({"name": f"ESXi NTP {hc['host']}", "status": "pass" if hc["ntp_servers"] and hc["ntpd_running"] else "warn",
+                        "expected": "NTP configured and running",
+                        "actual": (", ".join(hc["ntp_servers"]) or "no servers") + (" / running" if hc["ntpd_running"] else " / stopped"),
+                        "hint": "" if hc["ntp_servers"] and hc["ntpd_running"] else "Configure NTP on the host so every VM boots with the right time"})
+    except Exception as ex:
+        res.append({"name": "ESXi clock", "status": "warn", "expected": "", "actual": str(ex)[-160:], "hint": "Could not read host time"})
+    try:
         res += vcenter.privileges(vc)
     except Exception as ex:
         res.append({"name": "privileges", "status": "warn", "expected": "", "actual": str(ex)[-200:], "hint": "Privilege enumeration failed; the install may still work with an admin account"})

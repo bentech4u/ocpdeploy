@@ -11,6 +11,16 @@ from .settings import STATIC_DIR, LISTEN_HOST, LISTEN_PORT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 app = FastAPI(title="ocpdeploy", version=__version__)
+
+
+@app.on_event("startup")
+def _recover_jobs():
+    from . import jobs
+    from .services.deploy import finalize_after_restart
+    try:
+        jobs.recover({"deploy": finalize_after_restart})
+    except Exception:
+        logging.getLogger("ocpdeploy").exception("job recovery failed")
 app.include_router(clusters.router)
 app.include_router(discovery.router)
 app.include_router(checks.router)

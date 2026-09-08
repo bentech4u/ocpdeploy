@@ -227,6 +227,30 @@ def privileges(vc: VCenterSpec) -> List[Dict]:
         return results
 
 
+def host_clocks(vc: VCenterSpec, cluster_name: str) -> List[Dict]:
+    """Clock offset and NTP state of every ESXi host in the chosen compute resource.
+    VMs take their clock from the host at boot, so a skewed host means skewed nodes."""
+    from datetime import datetime, timezone
+    out = []
+    with session(vc) as si:
+        cr = _find(si.content, vim.ComputeResource, cluster_name)
+        hosts = list(cr.host) if cr else []
+        for h in hosts:
+            dts = h.configManager.dateTimeSystem
+            t = dts.QueryDateTime()
+            now = datetime.now(timezone.utc)
+            offset = (t - now).total_seconds()
+            cfg = dts.dateTimeInfo
+            ntp = list(cfg.ntpConfig.server) if cfg and cfg.ntpConfig else []
+            running = False
+            try:
+                running = any(sv.key == "ntpd" and sv.running for sv in h.configManager.serviceSystem.serviceInfo.service)
+            except Exception:
+                pass
+            out.append({"host": h.name, "offset_s": round(offset, 1), "ntp_servers": ntp, "ntpd_running": running})
+    return out
+
+
 # ---------------------------------------------------------------- objects
 def _find(content, vimtype, name, root=None):
     view = content.viewManager.CreateContainerView(root or content.rootFolder, [vimtype], True)
