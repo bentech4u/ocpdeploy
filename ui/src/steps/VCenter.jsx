@@ -102,6 +102,13 @@ export default function VCenter(p) {
             </Field>
           </div>
         )}
+        {cl && cl.kind === 'host' && (
+          <Alert kind={spec.install_method === 'ipi' ? 'error' : 'warn'}>
+            <b>{vc.cluster}</b> is a standalone ESXi host, not a vSphere cluster. {spec.install_method === 'ipi'
+              ? 'The IPI installer only accepts a cluster object. In vSphere Client right-click the datacenter → New Cluster (DRS and HA can stay off), drag the host into it, then reload the inventory here and select the new cluster.'
+              : 'The agent method tolerates this.'}
+          </Alert>
+        )}
         {!inv && (vc.datacenter || vc.cluster) && (
           <dl className="kv" style={{ marginTop: 12 }}>
             <dt>Datacenter</dt><dd>{vc.datacenter}</dd><dt>Cluster</dt><dd>{vc.cluster}</dd>

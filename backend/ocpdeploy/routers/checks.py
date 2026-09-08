@@ -105,6 +105,13 @@ def vcenter_check(name: str):
         if dc:
             cl = next((c for c in dc["clusters"] if c["name"] == vc.cluster), None)
             res.append({"name": f"cluster {vc.cluster}", "status": "pass" if cl else "fail", "expected": "exists", "actual": "found" if cl else "missing", "hint": ""})
+            if cl and cl["kind"] == "host":
+                ipi = spec.install_method == "ipi"
+                res.append({"name": "compute resource type", "status": "fail" if ipi else "warn", "expected": "vSphere cluster object",
+                            "actual": "standalone ESXi host",
+                            "hint": ("IPI requires a cluster object: in vSphere Client right-click the datacenter > New Cluster (DRS/HA off is fine), "
+                                     "move the host into it, then reload the inventory and select the cluster.") if ipi else
+                                    "Agent-based installs tolerate a standalone host."})
             ds = next((d for d in dc["datastores"] if d["name"] == vc.datastore), None)
             need = sum(n.disk_gb for n in spec.nodes)
             if ds:

@@ -22,6 +22,25 @@ def installer(spec: ClusterSpec) -> str:
     return str(tools.tool_path(spec.ocp_version, "openshift-install"))
 
 
+SYSTEM_CA = "/etc/pki/tls/certs/ca-bundle.crt"
+
+
+def trust_env(store: ClusterStore, spec: ClusterSpec, log=print) -> dict:
+    """openshift-install validates vCenter TLS with the host trust store, not with
+    additionalTrustBundle. Give it a combined bundle through SSL_CERT_FILE instead
+    of touching the system store."""
+    if not spec.vcenter.cert_pem:
+        return {}
+    combined = store.dir / "ca-trust.pem"
+    parts = []
+    if Path(SYSTEM_CA).exists():
+        parts.append(Path(SYSTEM_CA).read_text())
+    parts.append(spec.vcenter.cert_pem.strip() + "\n")
+    combined.write_text("\n".join(parts))
+    log(f"Using trust bundle {combined.name} (system CAs + vCenter CA) for the installer")
+    return {"SSL_CERT_FILE": str(combined)}
+
+
 def vm_name(spec: ClusterSpec, node) -> str:
     return f"{spec.name}-{node.name}"
 
@@ -73,7 +92,8 @@ def _deploy_ipi(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     store.set_status("deploying")
     ctx.log("Starting installer-provisioned vSphere installation. This takes 30-50 minutes.")
     try:
-        ctx.run([installer(spec), "create", "cluster", "--dir", str(store.install_dir), "--log-level", "info"])
+        ctx.run([installer(spec), "create", "cluster", "--dir", str(store.install_dir), "--log-level", "info"],
+                env=trust_env(store, spec, ctx.log))
     except Exception:
         store.set_status("failed")
         _copy_log(ctx, store)
@@ -145,7 +165,8 @@ def _deploy_agent(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
 def job_destroy(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     if spec.install_method == "ipi":
         if (store.install_dir / "metadata.json").exists():
-            ctx.run([installer(spec), "destroy", "cluster", "--dir", str(store.install_dir), "--log-level", "info"])
+            ctx.run([installer(spec), "destroy", "cluster", "--dir", str(store.install_dir), "--log-level", "info"],
+                    env=trust_env(store, spec, ctx.log))
         else:
             ctx.log("No metadata.json; nothing for the installer to destroy")
     else:
