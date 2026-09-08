@@ -180,7 +180,7 @@ def privileges(vc: VCenterSpec) -> List[Dict]:
             got = am.FetchUserPrivilegeOnEntities(entities, user)
             have = set()
             for g in got:
-                have.update(g.privId)
+                have.update(getattr(g, "privileges", None) or getattr(g, "privId", []))
             for p in REQUIRED_PRIVILEGES:
                 results.append({"name": p, "status": "pass" if p in have else "fail",
                                 "expected": "granted", "actual": "granted" if p in have else "missing",

@@ -121,9 +121,12 @@ def vcenter_check(name: str):
                 res.append({"name": "cluster capacity (nominal)", "status": "pass" if cl["cpu_cores"] >= need_cpu / 2 and cl["memory_gb"] >= need_mem * 0.8 else "warn",
                             "expected": f"{need_cpu} vCPU / {need_mem:.0f} GB", "actual": f"{cl['cpu_cores']} cores / {cl['memory_gb']} GB",
                             "hint": "Over-commit is normal in labs; a warning here is not fatal"})
-        res += vcenter.privileges(vc)
     except Exception as ex:
         res.append({"name": "inventory", "status": "fail", "expected": "", "actual": str(ex)[-200:], "hint": ""})
+    try:
+        res += vcenter.privileges(vc)
+    except Exception as ex:
+        res.append({"name": "privileges", "status": "warn", "expected": "", "actual": str(ex)[-200:], "hint": "Privilege enumeration failed; the install may still work with an admin account"})
     # existing VMs with the cluster prefix
     try:
         vms = vcenter.list_vms(vc, prefix=spec.name + "-")
