@@ -1,0 +1,19 @@
+global
+    log         /dev/log local0
+    log         /dev/log local1 notice
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    maxconn     4000
+    user        haproxy
+    group       haproxy
+    daemon
+
+defaults
+    log     global
+    mode    tcp
+    option  tcplog
+    option  dontlognull
+    retries 3
+    timeout connect 10s
+    timeout client  1m
+    timeout server  1m

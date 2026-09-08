@@ -1,0 +1,48 @@
+# Managed by ocpdeploy for cluster {{ spec.name }}
+global_defs {
+    router_id {{ vm.host }}
+    enable_script_security
+    script_user root
+}
+
+vrrp_script chk_haproxy {
+    script "/usr/bin/systemctl is-active haproxy"
+    interval 2
+    weight 2
+}
+
+vrrp_instance OCP_{{ spec.name | upper }}_API {
+    state {{ state }}
+    interface {{ iface }}
+    virtual_router_id {{ spec.lb.ha.router_id }}
+    priority {{ priority }}
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass {{ spec.lb.ha.auth_pass }}
+    }
+    virtual_ipaddress {
+        {{ spec.lb.ha.api_vip }}
+    }
+    track_script {
+        chk_haproxy
+    }
+}
+
+vrrp_instance OCP_{{ spec.name | upper }}_APPS {
+    state {{ state }}
+    interface {{ iface }}
+    virtual_router_id {{ spec.lb.ha.router_id + 1 }}
+    priority {{ priority }}
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass {{ spec.lb.ha.auth_pass }}
+    }
+    virtual_ipaddress {
+        {{ spec.lb.ha.apps_vip }}
+    }
+    track_script {
+        chk_haproxy
+    }
+}

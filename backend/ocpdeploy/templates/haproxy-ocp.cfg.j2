@@ -1,0 +1,76 @@
+# Managed by ocpdeploy for cluster {{ spec.name }}.{{ spec.base_domain }} - do not edit by hand.
+# Role on this host: {{ role }}
+
+listen stats
+    bind *:{{ spec.lb.stats_port }}
+    mode http
+    stats enable
+    stats uri /
+    stats refresh 10s
+    stats show-legends
+
+{% if role in ("api", "both") %}
+# ---- Kubernetes API (6443) ----
+frontend ocp_{{ spec.name }}_api
+    bind *:6443
+    mode tcp
+    option tcplog
+    default_backend ocp_{{ spec.name }}_api
+
+backend ocp_{{ spec.name }}_api
+    mode tcp
+    balance source
+    option httpchk GET /readyz HTTP/1.0
+    option log-health-checks
+    default-server inter 5s fall 3 rise 2 check check-ssl verify none
+{% for b in pools.api %}
+    server {{ b.name }} {{ b.ip }}:6443
+{% endfor %}
+
+# ---- Machine config server (22623) ----
+frontend ocp_{{ spec.name }}_mcs
+    bind *:22623
+    mode tcp
+    option tcplog
+    default_backend ocp_{{ spec.name }}_mcs
+
+backend ocp_{{ spec.name }}_mcs
+    mode tcp
+    balance source
+    default-server inter 5s fall 3 rise 2 check
+{% for b in pools.api %}
+    server {{ b.name }} {{ b.ip }}:22623
+{% endfor %}
+{% endif %}
+
+{% if role in ("apps", "both") %}
+# ---- Ingress HTTP (80) ----
+frontend ocp_{{ spec.name }}_http
+    bind *:80
+    mode tcp
+    option tcplog
+    default_backend ocp_{{ spec.name }}_http
+
+backend ocp_{{ spec.name }}_http
+    mode tcp
+    balance source
+    default-server inter 5s fall 3 rise 2 check
+{% for b in pools.apps %}
+    server {{ b.name }} {{ b.ip }}:80
+{% endfor %}
+
+# ---- Ingress HTTPS (443) ----
+frontend ocp_{{ spec.name }}_https
+    bind *:443
+    mode tcp
+    option tcplog
+    default_backend ocp_{{ spec.name }}_https
+
+backend ocp_{{ spec.name }}_https
+    mode tcp
+    balance source
+    default-server inter 5s fall 3 rise 2 check
+{% for b in pools.apps %}
+    server {{ b.name }} {{ b.ip }}:443
+{% endfor %}
+{% endif %}

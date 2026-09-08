@@ -1,0 +1,18 @@
+[Unit]
+Description=ocpdeploy - OpenShift on vSphere deployment console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ocpdeploy
+Environment=PYTHONPATH=/opt/ocpdeploy/backend
+Environment=OCPDEPLOY_PORT=8080
+ExecStart=/opt/ocpdeploy/.venv/bin/python -m ocpdeploy.main
+Restart=on-failure
+RestartSec=5
+# openshift-install and the ISO build need a real HOME for caches
+Environment=HOME=/root
+
+[Install]
+WantedBy=multi-user.target
