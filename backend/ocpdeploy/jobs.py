@@ -5,6 +5,7 @@ ctx.run(cmd, cwd, env) streams a subprocess. One running job per cluster.
 """
 import json
 import os
+import re
 import queue
 import subprocess
 import threading
@@ -24,6 +25,18 @@ class JobCancelled(Exception):
     pass
 
 
+_REDACT = [
+    (re.compile(r'(password:\s*)"[^"]+"'), r'\1"<redacted; see Operate page>"'),
+    (re.compile(r'(--password[= ]\S+)'), '--password <redacted>'),
+]
+
+
+def _redact(line: str) -> str:
+    for rx, rep in _REDACT:
+        line = rx.sub(rep, line)
+    return line
+
+
 class JobContext:
     def __init__(self, store: ClusterStore, job_id: int):
         self.store = store
@@ -33,7 +46,7 @@ class JobContext:
         self.cancelled = False
 
     def log(self, line: str):
-        line = line.rstrip("\n")
+        line = _redact(line.rstrip("\n"))
         ts = datetime.utcnow().isoformat(timespec="seconds")
         with self.store.db() as c:
             self.seq += 1
