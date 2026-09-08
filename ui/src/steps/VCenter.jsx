@@ -21,7 +21,7 @@ export default function VCenter(p) {
     setErr(''); setBusy('cert')
     try { setCert(await api.post('/api/vcenter/cert', { host: vc.host })) } catch (e) { setErr(e.message) } finally { setBusy('') }
   }
-  const accept = () => { update(s => { s.vcenter.cert_pem = cert.pem; s.vcenter.cert_thumbprint = cert.sha1 }) }
+  const accept = () => { update(s => { s.vcenter.cert_pem = cert.trust_pem || cert.pem; s.vcenter.cert_thumbprint = cert.sha1 }) }
   const test = async () => {
     setErr(''); setBusy('test')
     try { setAbout(await api.post('/api/vcenter/test', creds)) } catch (e) { setErr(e.message) } finally { setBusy('') }
@@ -65,6 +65,7 @@ export default function VCenter(p) {
               <dt>SHA-256</dt><dd className="mono">{cert.sha256}</dd>
               <dt>Expires</dt><dd>{cert.not_after}</dd>
               <dt>Self-signed</dt><dd>{cert.self_signed ? 'yes' : 'no (chain from ' + cert.issuer + ')'}</dd>
+              <dt>Trust bundle</dt><dd>{cert.ca_pem ? `vCenter CA bundle (${cert.ca_subjects.length} root(s)): ${cert.ca_subjects.join('; ')}` : 'CA bundle not published by this vCenter; the server certificate itself will be trusted'}</dd>
             </dl>
             <div className="row end" style={{ marginTop: 8 }}>
               <button className="primary" onClick={accept} disabled={vc.cert_thumbprint === cert.sha1}>{vc.cert_thumbprint === cert.sha1 ? 'Accepted' : 'Accept and trust this certificate'}</button>

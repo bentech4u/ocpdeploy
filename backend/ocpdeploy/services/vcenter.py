@@ -43,8 +43,12 @@ def fetch_cert(host: str, port: int = 443) -> Dict:
     pem = ssl.DER_cert_to_PEM_cert(der)
     from cryptography import x509
     cert = x509.load_der_x509_certificate(der)
+    ca_pem, ca_subjects = fetch_ca_bundle(host, port)
     return {
         "pem": pem,
+        "ca_pem": ca_pem,
+        "ca_subjects": ca_subjects,
+        "trust_pem": ca_pem or pem,
         "sha1": ":".join(f"{b:02X}" for b in hashlib.sha1(der).digest()),
         "sha256": ":".join(f"{b:02X}" for b in hashlib.sha256(der).digest()),
         "subject": cert.subject.rfc4514_string(),
@@ -52,6 +56,38 @@ def fetch_cert(host: str, port: int = 443) -> Dict:
         "not_after": cert.not_valid_after_utc.isoformat() if hasattr(cert, "not_valid_after_utc") else str(cert.not_valid_after),
         "self_signed": cert.subject == cert.issuer,
     }
+
+
+def fetch_ca_bundle(host: str, port: int = 443):
+    """vCenter publishes its trusted root CAs (VMCA or custom) at /certs/download.zip.
+    Returns (concatenated PEM, [subjects]) or ("", []) when unavailable."""
+    import io
+    import zipfile
+    from cryptography import x509
+    try:
+        r = httpx.get(f"https://{host}:{port}/certs/download.zip", verify=False, timeout=15, follow_redirects=True)
+        if r.status_code != 200:
+            return "", []
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+    except Exception:
+        return "", []
+    pems, subjects = [], []
+    for name in z.namelist():
+        if "/lin/" in name and (name.endswith(".0") or name.endswith(".pem") or name.endswith(".crt")):
+            data = z.read(name)
+            try:
+                if data.strip().startswith(b"-----BEGIN"):
+                    c = x509.load_pem_x509_certificate(data)
+                    text = data.decode()
+                else:
+                    c = x509.load_der_x509_certificate(data)
+                    text = ssl.DER_cert_to_PEM_cert(data)
+            except Exception:
+                continue
+            if text.strip() not in [p.strip() for p in pems]:
+                pems.append(text.strip() + "\n")
+                subjects.append(c.subject.rfc4514_string())
+    return "".join(pems), subjects
 
 
 # ---------------------------------------------------------------- session
