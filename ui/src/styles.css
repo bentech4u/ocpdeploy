@@ -43,6 +43,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .spacer { flex: 1; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.tbl th, table.tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.tbl td.help { min-width: 220px; }
 table.tbl th { background: #f7f8fa; font-weight: 600; }
 table.tbl input, table.tbl select { padding: 4px 6px; }
 table.tbl td.mono, .mono { font-family: var(--mono); font-size: 12px; }
