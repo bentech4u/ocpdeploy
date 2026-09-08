@@ -139,9 +139,13 @@ class ClusterStore:
             # validate with decrypted view before persisting
             probe = json.loads(json.dumps(incoming))
             _walk_secret(probe, lambda v, p: "" if v == MASK else (decrypt(v) if is_encrypted(v) else v))
-            ClusterSpec.model_validate(probe)
+            # persist the validated model so defaults are always materialised
+            validated = ClusterSpec.model_validate(probe).model_dump()
             _walk_secret(incoming, keep_or_encrypt)
-            self._write_raw(incoming)
+            enc: Dict[tuple, Any] = {}
+            _walk_secret(incoming, lambda v, p: enc.__setitem__(p, v) or v)
+            _walk_secret(validated, lambda v, p: enc.get(p, encrypt("")))
+            self._write_raw(validated)
             return self.load()
 
     def set_status(self, status: str):
