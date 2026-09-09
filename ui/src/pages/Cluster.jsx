@@ -16,9 +16,9 @@ import Operate from '../steps/Operate.jsx'
 const STEPS = [
   ['basics', 'Cluster & version', Basics],
   ['vcenter', 'vCenter', VCenter],
-  ['lb', 'Load balancer', LoadBalancer],
   ['network', 'Network', Network],
   ['nodes', 'Nodes', Nodes],
+  ['lb', 'Load balancer', LoadBalancer],
   ['secrets', 'Secrets', Secrets],
   ['dns', 'DNS records', Dns],
   ['preflight', 'Pre-flight', Preflight],
