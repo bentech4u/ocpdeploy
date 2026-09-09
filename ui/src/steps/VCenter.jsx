@@ -47,7 +47,7 @@ export default function VCenter(p) {
           : 'Used by this app to upload the agent ISO and create the node VMs. The cluster itself is installed with platform "none".'}</p>
         <Alert kind="error">{err}</Alert>
         <div className="grid3">
-          <Field label="vCenter host" help="FQDN preferred; it is written into install-config."><Text value={vc.host} onChange={v => set('host', v)} placeholder="vcenter.bentech.work" /></Field>
+          <Field label="vCenter host" help="FQDN preferred; it is written into install-config."><Text value={vc.host} onChange={v => set('host', v)} placeholder="vcenter.example.com" /></Field>
           <Field label="Username"><Text value={vc.username} onChange={v => set('username', v)} placeholder="administrator@vsphere.local" /></Field>
           <Field label="Password" help={vc.password === MASK ? 'Stored (encrypted). Type to replace.' : ''}><Text type="password" value={vc.password} onChange={v => set('password', v)} /></Field>
         </div>

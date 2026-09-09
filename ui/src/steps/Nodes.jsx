@@ -42,7 +42,7 @@ export default function Nodes(p) {
           <Field label="Masters"><Num value={plan.masters} onChange={v => setPlan({ ...plan, masters: v })} /></Field>
           <Field label="Workers"><Num value={plan.workers} onChange={v => setPlan({ ...plan, workers: v })} /></Field>
           <Field label="Infra (day 2)"><Num value={plan.infra} onChange={v => setPlan({ ...plan, infra: v })} /></Field>
-          <Field label="First IP" help="Assigned sequentially: bootstrap, masters, infra, workers"><Text value={plan.first_ip} onChange={v => setPlan({ ...plan, first_ip: v })} placeholder="192.168.68.223" /></Field>
+          <Field label="First IP" help="Assigned sequentially: bootstrap, masters, infra, workers"><Text value={plan.first_ip} onChange={v => setPlan({ ...plan, first_ip: v })} placeholder="10.0.10.20" /></Field>
           <Field label="Naming"><Select value={plan.name_style} onChange={v => setPlan({ ...plan, name_style: v })} options={[{ value: 'master01', label: 'master01, worker01…' }, { value: 'master-0', label: 'master-0, worker-0…' }]} /></Field>
           {isIPI && <Field label="Bootstrap VM"><Select value={String(plan.bootstrap)} onChange={v => setPlan({ ...plan, bootstrap: v === 'true' })} options={[{ value: 'true', label: 'include (required for IPI)' }, { value: 'false', label: 'omit' }]} /></Field>}
         </div>

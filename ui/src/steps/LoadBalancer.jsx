@@ -65,7 +65,7 @@ export default function LoadBalancer(p) {
                 {lb.vms.map((vm, i) => (
                   <tr key={i}>
                     <td>{lb.layout === 'ha' ? 'both' : <Select value={vm.role} onChange={v => setVM(i, 'role', v)} options={['api', 'apps', 'both']} />}</td>
-                    <td><Text value={vm.host} onChange={v => setVM(i, 'host', v)} placeholder="192.168.68.109" /></td>
+                    <td><Text value={vm.host} onChange={v => setVM(i, 'host', v)} placeholder="10.0.10.5" /></td>
                     <td><Text value={vm.ip} onChange={v => setVM(i, 'ip', v)} placeholder="same as host" /></td>
                     <td><Text value={vm.ssh_user} onChange={v => setVM(i, 'ssh_user', v)} /></td>
                     <td><Text type="password" value={vm.ssh_password} onChange={v => setVM(i, 'ssh_password', v)} placeholder={vm.ssh_password === MASK ? 'stored' : 'empty = use installer SSH key'} /></td>

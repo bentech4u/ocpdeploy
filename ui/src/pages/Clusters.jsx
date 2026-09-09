@@ -55,11 +55,11 @@ export default function Clusters() {
       <div className="panel">
         <h2>New cluster</h2>
         <div className="grid2">
-          <Field label="Cluster name" help="Lowercase DNS label, e.g. homeshift. Becomes <name>.<base domain>.">
-            <Text value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="homeshift" />
+          <Field label="Cluster name" help="Lowercase DNS label, e.g. ocp1. Becomes <name>.<base domain>.">
+            <Text value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="ocp1" />
           </Field>
-          <Field label="Base domain" help="Zone in your DNS server, e.g. bentech.work">
-            <Text value={form.base_domain} onChange={v => setForm({ ...form, base_domain: v })} placeholder="bentech.work" />
+          <Field label="Base domain" help="Zone in your DNS server, e.g. example.com">
+            <Text value={form.base_domain} onChange={v => setForm({ ...form, base_domain: v })} placeholder="example.com" />
           </Field>
         </div>
         <h3>Install method</h3>

@@ -301,7 +301,7 @@ def _wait(task, log=None):
 
 
 def upload_to_datastore(vc: VCenterSpec, local: Path, remote_path: str, log=print):
-    """PUT a file into the datastore at remote_path (e.g. ocpdeploy/homeshift/agent.iso)."""
+    """PUT a file into the datastore at remote_path (e.g. ocpdeploy/<cluster>/agent.iso)."""
     with session(vc) as si:
         cookie = si._stub.cookie
         content = si.content

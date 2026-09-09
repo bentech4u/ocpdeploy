@@ -14,9 +14,9 @@ export default function Network(p) {
         <h2>Network</h2>
         <p className="lead">Addressing for the node network. Nodes get static IPs from the Nodes step; DHCP is not required.</p>
         <div className="grid3">
-          <Field label="Machine network CIDR" help="Subnet the nodes and load balancers live in"><Text value={n.machine_cidr} onChange={v => set('machine_cidr', v)} placeholder="192.168.68.0/24" /></Field>
-          <Field label="Gateway"><Text value={n.gateway} onChange={v => set('gateway', v)} placeholder="192.168.68.1" /></Field>
-          <Field label="DNS servers" help="Comma separated; the first must know the cluster records"><Text value={list(n.dns_servers)} onChange={v => set('dns_servers', parse(v))} placeholder="192.168.68.122" /></Field>
+          <Field label="Machine network CIDR" help="Subnet the nodes and load balancers live in"><Text value={n.machine_cidr} onChange={v => set('machine_cidr', v)} placeholder="10.0.10.0/24" /></Field>
+          <Field label="Gateway"><Text value={n.gateway} onChange={v => set('gateway', v)} placeholder="10.0.10.1" /></Field>
+          <Field label="DNS servers" help="Comma separated; the first must know the cluster records"><Text value={list(n.dns_servers)} onChange={v => set('dns_servers', parse(v))} placeholder="10.0.10.2" /></Field>
           <Field label="NTP servers (optional)" help="Added as additional NTP sources for agent installs"><Text value={list(n.ntp_servers)} onChange={v => set('ntp_servers', parse(v))} /></Field>
           <Field label="Interface name inside RHCOS" help="vmxnet3 on a fresh VM is ens192. Used by the agent method for static IP config."><Text value={n.interface_name} onChange={v => set('interface_name', v)} /></Field>
         </div>
