@@ -143,6 +143,23 @@ def kubeconfig(name: str):
     return FileResponse(p, filename=f"kubeconfig-{name}", media_type="text/plain")
 
 
+@router.get("/credentials/ingress-ca")
+def ingress_ca(name: str):
+    """The cluster's ingress (router) CA in PEM; import it into a browser/OS trust store
+    to open the console and routes without warnings."""
+    import base64
+    s = _store(name)
+    spec = s.load()
+    try:
+        out = kube.oc(s, spec, ["get", "secret", "router-ca", "-n", "openshift-ingress-operator",
+                                "-o", "jsonpath={.data.tls\\.crt}"])
+    except Exception as ex:
+        raise HTTPException(502, f"could not read router-ca: {ex}")
+    pem = base64.b64decode(out).decode()
+    (s.dir / "ingress-ca.crt").write_text(pem)
+    return PlainTextResponse(pem, headers={"Content-Disposition": f'attachment; filename="{name}-ingress-ca.crt"'})
+
+
 @router.get("/files")
 def files(name: str):
     s = _store(name)

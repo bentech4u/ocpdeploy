@@ -42,6 +42,7 @@ export default function Operate(p) {
             <dt>Console</dt><dd><a href={st.console_url} target="_blank" rel="noreferrer">{st.console_url}</a></dd>
             <dt>API</dt><dd className="mono">{st.api_url}</dd>
             <dt>kubeconfig</dt><dd><a href={`/api/clusters/${p.name}/credentials/kubeconfig`}>download</a></dd>
+            <dt>Ingress CA</dt><dd><a href={`/api/clusters/${p.name}/credentials/ingress-ca`}>download</a> <span className="help">— import into your OS/browser trusted roots to open the console without certificate warnings</span></dd>
             <dt>kubeadmin</dt><dd>{pw ? <span className="mono">{pw}</span> : <button onClick={showPw}>reveal password</button>}</dd>
           </dl>
         )}
