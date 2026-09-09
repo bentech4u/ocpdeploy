@@ -11,13 +11,24 @@ Web console that deploys OpenShift clusters on vSphere from this installer host.
   * `logs/` – copies of installer logs
 * Tools: `bin/<version>/openshift-install|oc`, downloaded and checksum-verified from mirror.openshift.com
 
-## Run
+## Install on a new host
+
+Any RHEL-family 9 host with outbound internet (mirror.openshift.com, quay.io, api.openshift.com,
+pypi.org, registry.npmjs.org) and SSH reachability to the HAProxy VMs and vCenter:
 
 ```bash
-systemctl enable --now ocpdeploy
+git clone <this repo> /opt/ocpdeploy
+/opt/ocpdeploy/install.sh
 ```
 
-Open http://installer.bentech.work:8080/. No authentication (LAN only).
+The script installs Python 3.12 and Node 22, builds the frontend, generates an SSH key if the host
+has none, and enables the `ocpdeploy` systemd service on port 8080 (override with `OCPDEPLOY_PORT`).
+Open http://<host>:8080/. No authentication (LAN only).
+
+To move an existing installation, copy the whole directory (including `clusters/` and `.secret_key`,
+which decrypts the stored passwords and pull secrets) and run `install.sh` again on the new host.
+
+## Run
 
 ## Develop
 
