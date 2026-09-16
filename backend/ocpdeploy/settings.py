@@ -18,5 +18,5 @@ DEFAULT_SSH_KEY = Path.home() / ".ssh" / "id_ed25519"
 # URL under which BMCs / hypervisors can fetch ISOs from this app; auto-detected per target when empty
 ADVERTISE_URL = os.environ.get("OCPDEPLOY_ADVERTISE_URL", "")
 
-for d in (CLUSTERS_DIR, BIN_DIR):
+for d in (CLUSTERS_DIR, BIN_DIR, ROOT / "templates"):
     d.mkdir(parents=True, exist_ok=True)

@@ -27,6 +27,12 @@ export default function Basics(p) {
   const m = versions?.minors.find(x => x.minor === minor)
   const list = m ? (m.channels[channel] || []) : []
   const download = async () => { const r = await api.post(`/api/clusters/${p.name}/tools/download`); setJob(r.job_id) }
+  const [tplMsg, setTplMsg] = useState('')
+  const saveTemplate = async (secrets) => {
+    const name = prompt(`Template name (saved on the installer host${secrets ? ', including decrypted secrets' : ', without secrets'})`, `${spec.name}-${spec.topology}`)
+    if (!name) return
+    try { await api.post('/api/templates', { name, from_cluster: p.name, secrets }); setTplMsg(`Saved template ${name}. Use it on the Clusters page.`) } catch (e) { setVerr(e.message) }
+  }
 
   return (
     <div>
@@ -92,6 +98,17 @@ export default function Basics(p) {
             {job && <div style={{ marginTop: 10 }}><JobLog cluster={p.name} jobId={job} compact onDone={() => setJob(j => j)} /></div>}
           </div>
         )}
+      </div>
+      <div className="panel">
+        <h2>Template <span className="help">— reuse this configuration for the next cluster</span></h2>
+        <p className="lead">Export strips runtime state, MACs and BMC details. Without secrets the file is safe to keep in Git; with secrets it carries the pull secret and passwords in clear text.</p>
+        <div className="row">
+          <a className="btn" href={`/api/clusters/${p.name}/export`} download={`${spec.name}-template.yaml`}>Download YAML</a>
+          <a className="btn" href={`/api/clusters/${p.name}/export?secrets=true`} download={`${spec.name}-template-with-secrets.yaml`} onClick={e => { if (!confirm('The file will contain the pull secret and every password in clear text. Continue?')) e.preventDefault() }}>Download with secrets</a>
+          <button onClick={() => saveTemplate(false)}>Save to library</button>
+          <button onClick={() => saveTemplate(true)}>Save to library with secrets</button>
+        </div>
+        {tplMsg && <Alert kind="ok">{tplMsg}</Alert>}
       </div>
       <Footer {...p} />
     </div>

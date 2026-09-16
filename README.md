@@ -80,6 +80,9 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   * *Applications* – one-click lab workloads in their own namespaces with Routes and generated
     credentials: Gitea, MinIO, Grafana (wired to the cluster Prometheus with a cluster dashboard),
     Keycloak (Red Hat build, via its operator, with PostgreSQL) and Harbor (official Helm chart).
+* **Cluster templates** – export any cluster as YAML (runtime state, MACs and BMC details stripped;
+  secrets optional), keep a template library on the installer host, and create the next cluster
+  from a template or by cloning an existing one with a new name, domain and node IP range.
 * Secrets (vCenter password, SSH passwords, pull secret) are encrypted at rest.
 
 ## Requirements
@@ -126,6 +129,7 @@ clusters/<name>/       per-cluster state (git-ignored)
   backups/             etcd snapshots (etcd-<timestamp>.tar.gz)
   logs/                installer log copies, job outputs
 bin/<version>/         openshift-install, oc (git-ignored)
+templates/             cluster templates saved from the UI (git-ignored)
 install.sh             installer for a new host
 ocpdeploy.service      systemd unit
 ```

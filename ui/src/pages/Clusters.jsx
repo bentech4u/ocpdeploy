@@ -1,18 +1,32 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
-import { Field, Text, Alert, RadioCards } from '../components/Field.jsx'
+import { Field, Text, Select, Alert, RadioCards } from '../components/Field.jsx'
 import { Badge } from '../components/CheckTable.jsx'
 
 export default function Clusters() {
   const [list, setList] = useState([])
   const [sys, setSys] = useState(null)
   const [form, setForm] = useState({ name: '', base_domain: '', install_method: 'ipi' })
+  const [tpl, setTpl] = useState({ source: '', name: '', base_domain: '', first_ip: '', machine_cidr: '', gateway: '', yaml: '' })
+  const [templates, setTemplates] = useState([])
   const [err, setErr] = useState('')
   const nav = useNavigate()
 
-  const load = () => api.get('/api/clusters').then(setList).catch(e => setErr(e.message))
+  const load = () => { api.get('/api/clusters').then(setList).catch(e => setErr(e.message)); api.get('/api/templates').then(setTemplates).catch(() => {}) }
   useEffect(() => { load(); api.get('/api/system').then(setSys).catch(() => {}) }, [])
+  const fromTemplate = async () => {
+    setErr('')
+    const body = { name: tpl.name, base_domain: tpl.base_domain || null, first_ip: tpl.first_ip || null, machine_cidr: tpl.machine_cidr || null, gateway: tpl.gateway || null }
+    if (tpl.source === 'yaml') body.yaml = tpl.yaml
+    else if (tpl.source.startsWith('cluster:')) body.from_cluster = tpl.source.slice(8)
+    else if (tpl.source.startsWith('template:')) body.template = tpl.source.slice(9)
+    else { setErr('Pick a template, a cluster to clone, or paste YAML'); return }
+    try { await api.post('/api/clusters/import', body); nav(`/clusters/${tpl.name}/basics`) } catch (e) { setErr(e.message) }
+  }
+  const delTemplate = async (n) => { if (!confirm(`Delete template ${n}?`)) return; try { await api.del(`/api/templates/${n}`); load() } catch (e) { setErr(e.message) } }
+  const sources = [{ value: '', label: 'select…' }, ...templates.map(t => ({ value: `template:${t.name}`, label: `Template: ${t.name} (${t.install_method} ${t.topology}, ${t.nodes} nodes${t.has_secrets ? ', with secrets' : ''})` })),
+    ...list.map(c => ({ value: `cluster:${c.name}`, label: `Clone cluster: ${c.name} (${c.install_method}, ${c.ocp_version || 'no version'})` })), { value: 'yaml', label: 'Paste template YAML' }]
 
   const create = async () => {
     setErr('')
@@ -80,6 +94,32 @@ export default function Clusters() {
         <div className="row end" style={{ marginTop: 16 }}>
           <button className="primary" onClick={create} disabled={!form.name || !form.base_domain}>Create cluster</button>
         </div>
+      </div>
+      <div className="panel">
+        <h2>New cluster from a template</h2>
+        <p className="lead">Clone an existing cluster or start from a saved template: everything except the name, domain and node addresses carries over (vCenter, network, load balancer layout, node table, pools, proxy, day-2 settings). Secrets carry over when cloning a cluster or when the template was saved with them.</p>
+        <div className="grid3">
+          <Field label="Source"><Select value={tpl.source} onChange={v => setTpl({ ...tpl, source: v })} options={sources} /></Field>
+          <Field label="New cluster name"><Text value={tpl.name} onChange={v => setTpl({ ...tpl, name: v })} placeholder="ocp2" /></Field>
+          <Field label="Base domain" help="empty = same as the template"><Text value={tpl.base_domain} onChange={v => setTpl({ ...tpl, base_domain: v })} /></Field>
+          <Field label="First node IP" help="Renumbers every node sequentially in table order; empty keeps the template's IPs"><Text value={tpl.first_ip} onChange={v => setTpl({ ...tpl, first_ip: v })} placeholder="10.0.20.20" /></Field>
+          <Field label="Machine network CIDR" help="empty = same as the template"><Text value={tpl.machine_cidr} onChange={v => setTpl({ ...tpl, machine_cidr: v })} /></Field>
+          <Field label="Gateway" help="empty = same as the template"><Text value={tpl.gateway} onChange={v => setTpl({ ...tpl, gateway: v })} /></Field>
+        </div>
+        {tpl.source === 'yaml' && <Field label="Template YAML" help="As exported from the Cluster & version step of any ocpdeploy host"><textarea style={{ minHeight: 160 }} value={tpl.yaml} onChange={e => setTpl({ ...tpl, yaml: e.target.value })} /></Field>}
+        <div className="row end" style={{ marginTop: 14 }}>
+          <span className="help">Afterwards: check the vCenter/Infrastructure, Load balancer and DNS steps, paste secrets if the template had none, run pre-flight, deploy.</span>
+          <span className="spacer" />
+          <button className="primary" onClick={fromTemplate} disabled={!tpl.name || !tpl.source}>Create from template</button>
+        </div>
+        {templates.length > 0 && (
+          <>
+            <h3>Template library <span className="help">— {sys?.root}/templates</span></h3>
+            <table className="tbl"><thead><tr><th>Name</th><th>From</th><th>Method</th><th>Topology</th><th>Version</th><th>Nodes</th><th>Secrets</th><th></th></tr></thead>
+              <tbody>{templates.map(t => <tr key={t.name}><td className="mono">{t.name}</td><td>{t.source}</td><td>{t.install_method}{t.provider && t.provider !== 'vsphere' ? ` / ${t.provider}` : ''}</td><td>{t.topology}</td><td>{t.ocp_version}</td><td>{t.nodes}</td><td>{t.has_secrets ? <Badge s="warn" /> : <span className="help">no</span>}</td>
+                <td className="row end"><a className="btn small" href={`/api/templates/${t.name}`} download={`${t.name}.yaml`}>Download</a><button className="small danger" onClick={() => delTemplate(t.name)}>Delete</button></td></tr>)}</tbody></table>
+          </>
+        )}
       </div>
       {sys && (
         <div className="panel">

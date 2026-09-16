@@ -7,3 +7,4 @@ ui/dist/
 __pycache__/
 *.pyc
 backend/ocpdeploy/static/
+templates/
