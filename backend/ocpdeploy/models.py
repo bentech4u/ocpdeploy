@@ -187,6 +187,113 @@ class MirrorSpec(BaseModel):
     mirrored_version: str = ""    # last version successfully mirrored by the app
 
 
+# ---------------------------------------------------------------- day 2
+class HtpasswdUser(BaseModel):
+    username: str
+    password: str = ""            # secret; empty keeps the stored hash
+    cluster_admin: bool = False
+
+
+class LDAPSpec(BaseModel):
+    enabled: bool = False
+    name: str = "ldap"
+    url: str = ""                 # ldaps://ldap.example.com/ou=users,dc=example,dc=com?uid
+    bind_dn: str = ""
+    bind_password: str = ""       # secret
+    ca_pem: str = ""
+    insecure: bool = False
+    attr_id: str = "dn"
+    attr_email: str = "mail"
+    attr_name: str = "cn"
+    attr_preferred_username: str = "uid"
+
+
+class OIDCSpec(BaseModel):
+    enabled: bool = False
+    name: str = "oidc"
+    issuer: str = ""
+    client_id: str = ""
+    client_secret: str = ""       # secret
+    ca_pem: str = ""
+    claim_preferred_username: str = "preferred_username"
+    claim_name: str = "name"
+    claim_email: str = "email"
+    claim_groups: str = ""
+    extra_scopes: List[str] = Field(default_factory=list)
+
+
+class IdentitySpec(BaseModel):
+    htpasswd_enabled: bool = False
+    htpasswd_name: str = "htpasswd"
+    users: List[HtpasswdUser] = Field(default_factory=list)
+    ldap: LDAPSpec = Field(default_factory=LDAPSpec)
+    oidc: OIDCSpec = Field(default_factory=OIDCSpec)
+    cluster_admins: List[str] = Field(default_factory=list)   # extra user names (LDAP/OIDC) to bind cluster-admin
+    kubeadmin_disabled: bool = False
+
+
+class CustomCertSpec(BaseModel):
+    api_cert_pem: str = ""
+    api_key_pem: str = ""         # secret
+    apps_cert_pem: str = ""
+    apps_key_pem: str = ""        # secret
+    ca_pem: str = ""              # issuing CA chain to add to the cluster-wide trust
+
+
+class ACMESpec(BaseModel):
+    email: str = ""
+    staging: bool = False
+    provider: Literal["cloudflare", "route53", "rfc2136"] = "cloudflare"
+    cloudflare_token: str = ""    # secret
+    aws_access_key: str = ""
+    aws_secret_key: str = ""      # secret
+    aws_region: str = "us-east-1"
+    aws_hosted_zone_id: str = ""
+    rfc2136_nameserver: str = ""  # ip:53
+    rfc2136_tsig_key_name: str = ""
+    rfc2136_tsig_secret: str = "" # secret
+    rfc2136_tsig_algorithm: str = "HMACSHA256"
+
+
+class CertsSpec(BaseModel):
+    mode: Literal["none", "custom", "acme"] = "none"
+    custom: CustomCertSpec = Field(default_factory=CustomCertSpec)
+    acme: ACMESpec = Field(default_factory=ACMESpec)
+
+
+class NFSSpec(BaseModel):
+    server: str = ""
+    path: str = ""
+    sc_name: str = "nfs-client"
+    make_default: bool = False
+
+
+class RegistrySpec(BaseModel):
+    mode: Literal["pvc", "emptydir", "removed"] = "pvc"
+    storage_class: str = ""       # empty = cluster default
+    size_gb: int = 100
+    replicas: int = 1
+
+
+class StorageSpec(BaseModel):
+    nfs: NFSSpec = Field(default_factory=NFSSpec)
+    registry: RegistrySpec = Field(default_factory=RegistrySpec)
+    odf_min_disk_gb: int = 100
+    odf_max_disk_gb: int = 20000
+
+
+class BackupSpec(BaseModel):
+    schedule: str = ""            # systemd OnCalendar, e.g. daily or *-*-* 02:00:00; empty = no timer
+    keep: int = 7
+
+
+class Day2Spec(BaseModel):
+    identity: IdentitySpec = Field(default_factory=IdentitySpec)
+    certs: CertsSpec = Field(default_factory=CertsSpec)
+    storage: StorageSpec = Field(default_factory=StorageSpec)
+    backup: BackupSpec = Field(default_factory=BackupSpec)
+
+
 class ClusterSpec(BaseModel):
     name: str
     base_domain: str = ""
@@ -201,6 +308,7 @@ class ClusterSpec(BaseModel):
     proxy: ProxySpec = Field(default_factory=ProxySpec)
     mirror: MirrorSpec = Field(default_factory=MirrorSpec)
     additional_trust_bundle: str = ""   # extra CA certificates (PEM) to trust cluster-wide
+    day2: Day2Spec = Field(default_factory=Day2Spec)
     pull_secret: str = ""         # secret
     ssh_public_key: str = ""
     fips: bool = False
@@ -266,7 +374,17 @@ class ClusterSpec(BaseModel):
             return 0
 
 
+# Paths of secret leaves inside the raw cluster dict; [] marks "every element of this list".
 SECRET_PATHS = [
     ("pull_secret",),
     ("vcenter", "password"),
+    ("lb", "vms", [], "ssh_password"),
+    ("day2", "identity", "users", [], "password"),
+    ("day2", "identity", "ldap", "bind_password"),
+    ("day2", "identity", "oidc", "client_secret"),
+    ("day2", "certs", "custom", "api_key_pem"),
+    ("day2", "certs", "custom", "apps_key_pem"),
+    ("day2", "certs", "acme", "cloudflare_token"),
+    ("day2", "certs", "acme", "aws_secret_key"),
+    ("day2", "certs", "acme", "rfc2136_tsig_secret"),
 ]

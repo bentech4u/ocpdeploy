@@ -176,6 +176,36 @@ def start(store: ClusterStore, kind: str, fn: Callable[[JobContext], None], meta
     return job_id
 
 
+def run_sync(store: ClusterStore, kind: str, fn: Callable[[JobContext], None], log_stdout: bool = True) -> int:
+    """Run a job in the calling thread (used by the CLI / systemd timers) and record it
+    like any other job so it shows up in the Jobs list."""
+    with store.db() as c:
+        cur = c.execute("INSERT INTO jobs(kind,status,started,meta) VALUES(?,?,?,?)",
+                        (kind, "running", datetime.utcnow().isoformat(timespec="seconds"), "{}"))
+        job_id = cur.lastrowid
+    ctx = JobContext(store, job_id)
+    if log_stdout:
+        orig = ctx.log
+
+        def _log(line: str):
+            orig(line)
+            print(line, flush=True)
+        ctx.log = _log
+    status, code = "succeeded", 0
+    try:
+        ctx.log(f"== job {job_id} [{kind}] started ==")
+        fn(ctx)
+        ctx.log(f"== job {job_id} finished OK ==")
+    except Exception as ex:  # noqa
+        status, code = "failed", 1
+        ctx.log("ERROR: " + str(ex))
+    finally:
+        with store.db() as c:
+            c.execute("UPDATE jobs SET status=?, finished=?, exit_code=? WHERE id=?",
+                      (status, datetime.utcnow().isoformat(timespec="seconds"), code, job_id))
+    return code
+
+
 def cancel(store: ClusterStore, job_id: int) -> bool:
     if store.name in _running and _running[store.name] == job_id:
         unit = _units.get(job_id)

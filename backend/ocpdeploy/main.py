@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .routers import clusters, discovery, checks, ops
+from .routers import clusters, discovery, checks, ops, day2
 from .settings import STATIC_DIR, LISTEN_HOST, LISTEN_PORT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,6 +25,7 @@ app.include_router(clusters.router)
 app.include_router(discovery.router)
 app.include_router(checks.router)
 app.include_router(ops.router)
+app.include_router(day2.router)
 
 
 @app.exception_handler(Exception)

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .models import ClusterSpec
+from .models import ClusterSpec, SECRET_PATHS
 from .secrets import MASK, encrypt, decrypt, is_encrypted
 from .settings import CLUSTERS_DIR
 
@@ -47,15 +47,28 @@ CREATE TABLE IF NOT EXISTS kv (
 
 
 def _walk_secret(d: Dict[str, Any], fn):
-    """Apply fn to every secret leaf in a raw cluster dict, in place."""
-    if "pull_secret" in d:
-        d["pull_secret"] = fn(d["pull_secret"], ("pull_secret",))
-    vc = d.get("vcenter") or {}
-    if "password" in vc:
-        vc["password"] = fn(vc["password"], ("vcenter", "password"))
-    for i, vm in enumerate((d.get("lb") or {}).get("vms") or []):
-        if "ssh_password" in vm:
-            vm["ssh_password"] = fn(vm["ssh_password"], ("lb", "vms", i, "ssh_password"))
+    """Apply fn(value, path) to every secret leaf in a raw cluster dict, in place.
+    Paths come from models.SECRET_PATHS; missing keys are skipped."""
+    def walk(node, rest, path):
+        if not isinstance(node, dict):
+            return
+        key = rest[0]
+        if key == []:
+            return
+        if len(rest) == 1:
+            if key in node:
+                node[key] = fn(node[key], tuple(path) + (key,))
+            return
+        child = node.get(key)
+        if rest[1] == []:
+            if isinstance(child, list):
+                for i, item in enumerate(child):
+                    walk(item, rest[2:], path + [key, i])
+        elif isinstance(child, dict):
+            walk(child, rest[1:], path + [key])
+
+    for spath in SECRET_PATHS:
+        walk(d, list(spath), [])
 
 
 class ClusterStore:

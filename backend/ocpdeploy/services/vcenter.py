@@ -476,6 +476,46 @@ def power(vc: VCenterSpec, name: str, state: str, log=print) -> Dict:
         return vm_summary(vm)
 
 
+def power_states(vc: VCenterSpec, names: List[str]) -> Dict[str, str]:
+    """Power state per VM name ("missing" when not found)."""
+    out = {n: "missing" for n in names}
+    with session(vc) as si:
+        view = si.content.viewManager.CreateContainerView(si.content.rootFolder, [vim.VirtualMachine], True)
+        try:
+            for v in view.view:
+                if v.name in out:
+                    out[v.name] = str(v.runtime.powerState)
+        finally:
+            view.Destroy()
+    return out
+
+
+def shutdown_guest(vc: VCenterSpec, name: str, log=print, timeout: int = 300) -> str:
+    """Ask the guest OS to shut down (VMware Tools); hard power-off after timeout."""
+    import time
+    with session(vc) as si:
+        vm = _find(si.content, vim.VirtualMachine, name)
+        if vm is None:
+            raise RuntimeError(f"VM {name} not found")
+        if vm.runtime.powerState == "poweredOff":
+            return "poweredOff"
+        try:
+            vm.ShutdownGuest()
+            log(f"{name}: guest shutdown requested")
+        except vim.fault.ToolsUnavailable:
+            log(f"{name}: VMware Tools not running, powering off")
+            _wait(vm.PowerOffVM_Task())
+            return "poweredOff"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if vm.runtime.powerState == "poweredOff":
+                return "poweredOff"
+            time.sleep(5)
+        log(f"{name}: still running after {timeout}s, powering off")
+        _wait(vm.PowerOffVM_Task())
+        return "poweredOff"
+
+
 def destroy_vm(vc: VCenterSpec, name: str, log=print) -> bool:
     with session(vc) as si:
         vm = _find(si.content, vim.VirtualMachine, name)

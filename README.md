@@ -42,6 +42,24 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 * **Day 2** – credentials & ingress CA download, node/operator dashboard, remove bootstrap from the
   LB, add infra and pool nodes (static IPs), move ingress / monitoring / registry to infra, resume an
   interrupted install, destroy.
+* **Operate pages**
+  * *Health* – operators, nodes and conditions, machine config pools, pending CSRs (approve), alerts
+    from Alertmanager, warning events, etcd, kubelet signer expiry.
+  * *Upgrade* – channels and available updates from the CVO, admin-gate acknowledgement, upgrade job
+    that follows progress to completion (explicit release image on disconnected clusters).
+  * *Scaling* – MachineSets and Machines; scale up with static IPs (the app binds the new IP claims),
+    remove machines or app-created MachineSets; HAProxy pools follow.
+  * *Identity providers* – htpasswd users (bcrypt), LDAP / AD, OpenID Connect, cluster-admin binding,
+    kubeadmin removal with safety checks.
+  * *Certificates* – custom API / ingress certificates with CA trust, or Let's Encrypt through the
+    cert-manager operator with DNS-01 (Cloudflare, Route 53, RFC 2136).
+  * *Storage & registry* – default storage class, NFS provisioner, LVM Storage, ODF internal mode,
+    image registry storage (PVC / emptyDir / removed).
+  * *Operators* – curated OLM installs (Virtualization, Logging, GitOps, Pipelines, cert-manager,
+    NMState, LSO, ODF, LVMS, NFD, NVIDIA GPU, Web Terminal) and mirror catalog resources.
+  * *etcd backup* – on demand or on a systemd timer, tarballs kept on the installer host.
+  * *Power* – graceful shutdown (backup, workers then masters via VMware Tools) and startup with
+    CSR approval.
 * Secrets (vCenter password, SSH passwords, pull secret) are encrypted at rest.
 
 ## Requirements
@@ -82,6 +100,7 @@ clusters/<name>/       per-cluster state (git-ignored)
   state.sqlite         jobs, logs, check results
   install/             openshift-install working dir (auth/kubeconfig, auth/kubeadmin-password)
   mirror/              imageset-config.yaml, oc-mirror workspace and cache (disconnected installs)
+  backups/             etcd snapshots (etcd-<timestamp>.tar.gz)
   logs/                installer log copies, job outputs
 bin/<version>/         openshift-install, oc (git-ignored)
 install.sh             installer for a new host
@@ -120,3 +139,7 @@ cd ui && npm run build         # rebuild the static bundle
 * Disconnected: the pull secret must also carry the mirror registry login, and `oc-mirror` runs on the
   installer host, which needs internet access (directly or through the proxy) while mirroring.
 * Data disks on day-2 MachineSets need OpenShift 4.18+; older releases silently ignore them.
+* Static-IP clusters keep the installer's worker MachineSet at 0 replicas; the workers are standalone
+  Machines. Scaling up creates IPAddressClaims that nothing serves, so the app writes the IPAddress
+  objects itself. Removing a worker deletes its Machine (drain + VM destroy).
+* Backups and power operations need no SSH key: they go through `oc debug node` and VMware Tools.

@@ -14,6 +14,15 @@ import Dns from '../steps/Dns.jsx'
 import Preflight from '../steps/Preflight.jsx'
 import Review from '../steps/Review.jsx'
 import Operate from '../steps/Operate.jsx'
+import Health from '../steps/Health.jsx'
+import Upgrade from '../steps/Upgrade.jsx'
+import Scale from '../steps/Scale.jsx'
+import Identity from '../steps/Identity.jsx'
+import Certs from '../steps/Certs.jsx'
+import Storage from '../steps/Storage.jsx'
+import Operators from '../steps/Operators.jsx'
+import Backup from '../steps/Backup.jsx'
+import Power from '../steps/Power.jsx'
 
 /* key, label, component, group, done(spec) */
 const STEPS = [
@@ -28,6 +37,15 @@ const STEPS = [
   ['preflight', 'Pre-flight', Preflight, 'Validate', null],
   ['review', 'Review & deploy', Review, 'Deploy', s => ['installed', 'deploying'].includes(s.status)],
   ['operate', 'Operate / Day 2', Operate, 'Operate', null],
+  ['health', 'Health', Health, 'Operate', null],
+  ['upgrade', 'Upgrade', Upgrade, 'Operate', null],
+  ['scale', 'Scaling', Scale, 'Operate', null],
+  ['identity', 'Identity providers', Identity, 'Operate', s => !!(s.day2?.identity?.htpasswd_enabled || s.day2?.identity?.ldap?.enabled || s.day2?.identity?.oidc?.enabled)],
+  ['certs', 'Certificates', Certs, 'Operate', s => s.day2?.certs?.mode !== 'none'],
+  ['storage', 'Storage & registry', Storage, 'Operate', null],
+  ['operators', 'Operators', Operators, 'Operate', null],
+  ['backup', 'etcd backup', Backup, 'Operate', s => !!s.day2?.backup?.schedule],
+  ['power', 'Power', Power, 'Operate', null],
 ]
 
 const TOPOLOGY = { standard: 'Standard', compact: 'Compact 3-node', sno: 'Single node' }
