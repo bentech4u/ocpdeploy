@@ -13,6 +13,7 @@ from ..models import ClusterSpec
 from ..store import ClusterStore
 from . import kube, render, clusterops as ops
 from .deploy import job_push_haproxy
+from .day2 import resolve_template, MAPI_IPAM_RBAC
 
 NS = ops.MAPI_NS
 
@@ -58,6 +59,15 @@ def job_scale_up(ctx: JobContext, store: ClusterStore, spec: ClusterSpec, machin
         raise RuntimeError("this MachineSet uses static IPs: give one IP per new node")
     add = len(ips) if ms["static_ip"] else 1
     target = ms["replicas"] + add
+    # make sure the MachineSet can actually clone: full template path, IPAM permissions
+    raw = ops.get(store, spec, "machineset", machineset, ns=NS)
+    pv = raw["spec"]["template"]["spec"]["providerSpec"]["value"]
+    fixed = resolve_template(spec, dict(pv), ctx.log)
+    if fixed.get("template") != pv.get("template"):
+        ops.patch(store, spec, f"machineset/{machineset}", {"spec": {"template": {"spec": {"providerSpec": {"value": {"template": fixed["template"]}}}}}}, ns=NS)
+    if ms["static_ip"]:
+        ops.apply(store, spec, MAPI_IPAM_RBAC)
+        ctx.log("granted the Machine API controllers access to IPAddress / IPAddressClaim objects")
     ctx.log(f"Scaling {machineset} from {ms['replicas']} to {target}")
     kube.oc(store, spec, ["scale", f"machineset/{machineset}", f"--replicas={target}", "-n", NS])
     before = {m["name"] for m in ops.machines(store, spec)}

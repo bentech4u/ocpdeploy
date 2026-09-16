@@ -134,6 +134,35 @@ def job_add_nodes(ctx: JobContext, store: ClusterStore, spec: ClusterSpec, node_
         ctx.log("External LB: add the new nodes that serve ingress to the apps pools for 80 and 443.")
 
 
+def resolve_template(spec: ClusterSpec, value: Dict, log) -> Dict:
+    """The Machine API looks a bare template name up in the datacenter's root VM folder
+    only. The installer puts the RHCOS template inside the cluster's VM folder, so
+    replace the name with the template's full inventory path."""
+    tmpl = value.get("template", "")
+    if tmpl and not tmpl.startswith("/"):
+        try:
+            found = vcenter.find_vm(spec.vcenter, tmpl)
+        except Exception as ex:
+            log(f"warning: could not look up template {tmpl} in vCenter: {ex}")
+            found = None
+        if found and found.get("path") and found["path"] != f"/{spec.vcenter.datacenter}/vm/{tmpl}":
+            log(f"template {tmpl} lives at {found['path']}; using the full path")
+            value["template"] = found["path"]
+        elif not found:
+            log(f"warning: RHCOS template {tmpl} not found in vCenter; machines will fail to clone")
+    return value
+
+
+MAPI_IPAM_RBAC = [
+    {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "ocpdeploy-machine-api-ipam"},
+     "rules": [{"apiGroups": ["ipam.cluster.x-k8s.io"], "resources": ["ipaddresses", "ipaddressclaims", "ipaddressclaims/status"],
+                "verbs": ["get", "list", "watch", "create", "update", "patch"]}]},
+    {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding", "metadata": {"name": "ocpdeploy-machine-api-ipam"},
+     "subjects": [{"kind": "ServiceAccount", "name": "machine-api-controllers", "namespace": "openshift-machine-api"}],
+     "roleRef": {"kind": "ClusterRole", "name": "ocpdeploy-machine-api-ipam", "apiGroup": "rbac.authorization.k8s.io"}},
+]
+
+
 def _worker_machineset_for(ctx, spec: ClusterSpec, workers: List[Dict], n: NodeSpec):
     """The worker MachineSet whose placement matches the node's failure domain (its
     providerSpec carries the right template, datastore and resource pool)."""
@@ -174,6 +203,7 @@ def _add_nodes_ipi(ctx, store, spec, targets: List[NodeSpec]):
         value["numCoresPerSocket"] = min(2, n.cpus)
         value["memoryMiB"] = n.memory_mb
         value["diskGiB"] = n.disk_gb
+        value = resolve_template(spec, value, ctx.log)
         value["network"] = {"devices": [{"networkName": fd.network if fd else spec.vcenter.network, "gateway": spec.network.gateway,
                                          "ipAddrs": [f"{n.ip}/{plen}"], "nameservers": spec.network.dns_servers}]}
         disks = node_extra_disks(spec, n)
