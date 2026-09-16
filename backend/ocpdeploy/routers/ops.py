@@ -207,6 +207,19 @@ def ingress_ca(name: str):
     return PlainTextResponse(pem, headers={"Content-Disposition": f'attachment; filename="{name}-ingress-ca.crt"'})
 
 
+@router.get("/iso/{file}")
+def iso(name: str, file: str):
+    """Agent / node ISO download for Redfish virtual media and manual booting."""
+    s = _store(name)
+    if "/" in file or not (file.startswith("agent.") or file.startswith("node.")) or not file.endswith(".iso"):
+        raise HTTPException(404)
+    for d in (s.install_dir, s.dir / "add-nodes"):
+        p = d / file
+        if p.exists():
+            return FileResponse(p, filename=file, media_type="application/octet-stream")
+    raise HTTPException(404, "ISO not built yet")
+
+
 @router.get("/files")
 def files(name: str):
     s = _store(name)

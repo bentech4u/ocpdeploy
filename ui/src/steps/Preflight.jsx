@@ -4,7 +4,7 @@ import { Alert } from '../components/Field.jsx'
 import Footer from '../components/Footer.jsx'
 import CheckTable, { Summary } from '../components/CheckTable.jsx'
 
-const CATS = [['general', 'Installer host, secrets & node sanity'], ['dns', 'DNS'], ['lb', 'Load balancer'], ['vcenter', 'vCenter'], ['mirror', 'Mirror registry']]
+const CATS = [['general', 'Installer host, secrets & node sanity'], ['dns', 'DNS'], ['lb', 'Load balancer'], ['vcenter', 'Infrastructure (vCenter / provider)'], ['mirror', 'Mirror registry']]
 
 export default function Preflight(p) {
   const [res, setRes] = useState({})

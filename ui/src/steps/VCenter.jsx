@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, MASK } from '../api.js'
-import { Field, Text, Select, Alert } from '../components/Field.jsx'
+import { Field, Text, Num, Select, Alert } from '../components/Field.jsx'
 import Footer from '../components/Footer.jsx'
 import CheckTable from '../components/CheckTable.jsx'
 
@@ -8,6 +8,64 @@ import CheckTable from '../components/CheckTable.jsx'
 function Pick({ value, onChange, options, placeholder }) {
   if (options && options.length) return <Select value={value} onChange={onChange} placeholder={placeholder || 'select…'} options={options} />
   return <Text value={value} onChange={onChange} placeholder={placeholder} />
+}
+
+function ProviderForm({ p, checks, setChecks, busy, setBusy, setErr }) {
+  const { spec, update } = p
+  const prov = spec.provider
+  const check = async () => {
+    setErr(''); setBusy('check')
+    try { if (p.dirty) { if (!(await p.save())) return } setChecks(await api.post(`/api/clusters/${p.name}/vcenter/check`)) } catch (e) { setErr(e.message) } finally { setBusy('') }
+  }
+  const px = spec.proxmox, lv = spec.libvirt, rf = spec.redfish
+  const setPx = (k, v) => update(s => s.proxmox[k] = v)
+  const setLv = (k, v) => update(s => s.libvirt[k] = v)
+  const setRf = (k, v) => update(s => s.redfish[k] = v)
+  return (
+    <div className="panel">
+      <h2>Infrastructure — {{ proxmox: 'Proxmox VE', libvirt: 'KVM / libvirt', redfish: 'Bare metal (Redfish)', manual: 'Manual boot' }[prov]}</h2>
+      {prov === 'proxmox' && <>
+        <p className="lead">The app talks to the Proxmox API with an API token, uploads the agent ISO to an ISO-capable storage and creates UEFI VMs on a bridge of the machine network. Create the token under Datacenter → Permissions → API Tokens (uncheck "privilege separation" or grant VM.*, Datastore.* and Sys.Audit).</p>
+        <div className="grid3">
+          <Field label="Host"><Text value={px.host} onChange={v => setPx('host', v)} placeholder="pve.example.com" /></Field>
+          <Field label="Port"><Num value={px.port} onChange={v => setPx('port', v)} /></Field>
+          <Field label="Verify TLS"><label className="row" style={{ marginTop: 8 }}><input type="checkbox" checked={!!px.verify_tls} onChange={e => setPx('verify_tls', e.target.checked)} /> certificate is trusted</label></Field>
+          <Field label="API token ID" help="user@realm!tokenname"><Text value={px.token_id} onChange={v => setPx('token_id', v)} placeholder="root@pam!ocpdeploy" /></Field>
+          <Field label="API token secret" help={px.token_secret === MASK ? 'Stored. Type to replace.' : ''}><Text type="password" value={px.token_secret === MASK ? '' : px.token_secret} onChange={v => setPx('token_secret', v)} /></Field>
+          <Field label="Node" help="Proxmox node that runs the VMs"><Text value={px.node} onChange={v => setPx('node', v)} placeholder="pve1" /></Field>
+          <Field label="Disk storage" help="content type images"><Text value={px.storage} onChange={v => setPx('storage', v)} /></Field>
+          <Field label="ISO storage" help="content type iso"><Text value={px.iso_storage} onChange={v => setPx('iso_storage', v)} /></Field>
+          <Field label="Bridge" help="On the machine network"><Text value={px.bridge} onChange={v => setPx('bridge', v)} /></Field>
+        </div>
+      </>}
+      {prov === 'libvirt' && <>
+        <p className="lead">A Linux host with libvirt and virt-install, reached over SSH. VMs are created in the given storage pool on a Linux bridge that sits on the machine network. Leave the password empty to use the installer host's SSH key (copy it into the KVM host's authorized_keys).</p>
+        <div className="grid3">
+          <Field label="KVM host"><Text value={lv.host} onChange={v => setLv('host', v)} placeholder="kvm.example.com" /></Field>
+          <Field label="SSH user"><Text value={lv.ssh_user} onChange={v => setLv('ssh_user', v)} /></Field>
+          <Field label="SSH port"><Num value={lv.ssh_port} onChange={v => setLv('ssh_port', v)} /></Field>
+          <Field label="SSH password" help={lv.ssh_password === MASK ? 'Stored. Type to replace.' : 'empty = installer SSH key'}><Text type="password" value={lv.ssh_password === MASK ? '' : lv.ssh_password} onChange={v => setLv('ssh_password', v)} /></Field>
+          <Field label="Storage pool"><Text value={lv.pool} onChange={v => setLv('pool', v)} /></Field>
+          <Field label="Bridge"><Text value={lv.bridge} onChange={v => setLv('bridge', v)} placeholder="br0" /></Field>
+          <Field label="Images directory" help="Where the ISO is copied"><Text value={lv.images_dir} onChange={v => setLv('images_dir', v)} /></Field>
+          <Field label="OS variant" help="virt-install --os-variant"><Text value={lv.os_variant} onChange={v => setLv('os_variant', v)} /></Field>
+        </div>
+      </>}
+      {prov === 'redfish' && <>
+        <p className="lead">Each node's BMC (set per node in the Nodes step) mounts the agent ISO from this app as virtual media, boots from it once and powers on. Missing MACs are read from the BMC's first NIC; set the real MAC of the NIC on the machine network if that is not the right one.</p>
+        <div className="grid3">
+          <Field label="Default BMC username"><Text value={rf.username} onChange={v => setRf('username', v)} placeholder="root" /></Field>
+          <Field label="Default BMC password" help={rf.password === MASK ? 'Stored. Type to replace.' : 'used for nodes without their own'}><Text type="password" value={rf.password === MASK ? '' : rf.password} onChange={v => setRf('password', v)} /></Field>
+          <Field label="Verify BMC TLS"><label className="row" style={{ marginTop: 8 }}><input type="checkbox" checked={!!rf.verify_tls} onChange={e => setRf('verify_tls', e.target.checked)} /> certificates are trusted</label></Field>
+          <Field label="ISO URL base (optional)" help="How the BMCs reach this app, e.g. http://10.0.0.5:8080; auto-detected when empty"><Text value={rf.iso_url_base} onChange={v => setRf('iso_url_base', v)} /></Field>
+        </div>
+      </>}
+      {prov === 'manual' && <p className="lead">Nothing to configure. When you deploy, the job builds the ISO, prints a download link and the MAC address every machine must use, then waits for the hosts to boot it. Works with any hypervisor, USB stick or existing PXE setup.</p>}
+      <h3>Validation</h3>
+      <div className="row"><button onClick={check} disabled={busy === 'check'}>Check infrastructure</button></div>
+      {checks && <div style={{ marginTop: 10 }}><CheckTable rows={checks} /></div>}
+    </div>
+  )
 }
 
 export default function VCenter(p) {
@@ -58,6 +116,15 @@ export default function VCenter(p) {
   const fds = vc.failure_domains || []
   const dcOf = (name) => inv?.datacenters.find(d => d.name === name)
   const clOf = (fd) => dcOf(fd.datacenter)?.clusters.find(c => c.name === fd.cluster)
+  if (spec.install_method === 'agent' && spec.provider && spec.provider !== 'vsphere') {
+    return (
+      <div>
+        <Alert kind="error">{err}</Alert>
+        <ProviderForm p={p} checks={checks} setChecks={setChecks} busy={busy} setBusy={setBusy} setErr={setErr} />
+        <Footer {...p} />
+      </div>
+    )
+  }
   const setFD = (i, k, v) => update(s => s.vcenter.failure_domains[i][k] = v)
   const addFD = () => update(s => {
     const n = s.vcenter.failure_domains.length + 1

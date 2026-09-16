@@ -235,7 +235,9 @@ def _add_nodes_ipi(ctx, store, spec, targets: List[NodeSpec]):
 
 
 def _add_nodes_agent(ctx, store, spec, targets: List[NodeSpec]):
-    spec = ensure_macs(store, spec, ctx.log)
+    from .providers import get_provider
+    prov = get_provider(spec, store)
+    spec = prov.prepare_nodes(ctx.log)
     wanted = {t.name for t in targets}
     targets = [n for n in spec.nodes if n.name in wanted]
     d = store.dir / "add-nodes"
@@ -252,7 +254,7 @@ def _add_nodes_agent(ctx, store, spec, targets: List[NodeSpec]):
     _label_nodes(ctx, store, spec, targets)
     for n in targets:
         try:
-            vcenter.eject_cdrom(spec.vcenter, vm_name(spec, n), ctx.log)
+            prov.eject(n, ctx.log)
         except Exception as ex:
             ctx.log(f"eject {vm_name(spec, n)}: {ex}")
 

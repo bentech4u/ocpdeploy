@@ -124,3 +124,32 @@ def ensure_oc_mirror(version: str, log=print) -> Path:
     if not (d / "oc-mirror").exists():
         raise RuntimeError("archive did not contain an oc-mirror binary")
     return d / "oc-mirror"
+
+
+HELM_VERSION = "v3.18.6"
+
+
+def ensure_helm(log=print) -> Path:
+    """Fetch the helm binary (checksum-verified) into bin/helm/."""
+    d = BIN_DIR / "helm"
+    exe = d / "helm"
+    if exe.exists():
+        return exe
+    d.mkdir(parents=True, exist_ok=True)
+    fname = f"helm-{HELM_VERSION}-linux-amd64.tar.gz"
+    url = f"https://get.helm.sh/{fname}"
+    log(f"Downloading {url}")
+    tgz = d / fname
+    _download(url, tgz, log)
+    want = httpx.get(url + ".sha256sum", timeout=30, follow_redirects=True).text.split()[0]
+    got = hashlib.sha256(tgz.read_bytes()).hexdigest()
+    if got != want:
+        tgz.unlink()
+        raise RuntimeError("helm checksum mismatch")
+    with tarfile.open(tgz) as t:
+        t.extractall(d, filter="data")
+    tgz.unlink()
+    (d / "linux-amd64" / "helm").rename(exe)
+    exe.chmod(0o755)
+    log(f"helm {HELM_VERSION} ready")
+    return exe

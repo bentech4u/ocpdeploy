@@ -132,7 +132,7 @@ def finalize_after_restart(ctx: JobContext, store: ClusterStore, code: int):
 def job_generate(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     ensure_tools(ctx, spec)
     if spec.install_method == "agent":
-        spec = ensure_macs(store, spec, ctx.log)
+        spec = _provider(spec, store).prepare_nodes(ctx.log)
     render.write_install_dir(store, spec, ctx.log)
     store.set_status("configured")
 
@@ -210,35 +210,43 @@ def job_resume(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
 
 
 # ---------------------------------------------------------------- agent
-def _iso_remote_path(spec: ClusterSpec, iso: Path) -> str:
-    return f"ocpdeploy/{spec.name}/{iso.name}"
+def _provider(spec: ClusterSpec, store: ClusterStore):
+    from .providers import get_provider
+    return get_provider(spec, store)
 
 
 def create_node_vms(ctx: JobContext, spec: ClusterSpec, nodes, iso_local: Path, boot_only_missing: bool = True):
-    remote = vcenter.upload_to_datastore(spec.vcenter, iso_local, _iso_remote_path(spec, iso_local), ctx.log)
+    """Put the ISO where the provider can boot from it, create the machines that do not
+    exist yet, then power all of them on (vSphere, Proxmox, KVM, Redfish or manual)."""
+    prov = _provider(spec, ctx.store)
+    iso_ref = prov.upload_iso(iso_local, ctx.log)
     created = []
     for n in nodes:
         name = vm_name(spec, n)
-        existing = vcenter.find_vm(spec.vcenter, name)
+        existing = prov.exists(n)
         if existing:
-            ctx.log(f"VM {name} already exists ({existing['power']}); leaving it")
+            ctx.log(f"VM {name} already exists ({existing.get('power')}); leaving it")
             continue
-        vcenter.create_vm(spec.vcenter, name, n.cpus, n.memory_mb, n.disk_gb, n.mac, remote, ctx.log,
-                          extra_disks_gb=node_extra_disks(spec, n))
+        prov.create_node(n, iso_ref, ctx.log, extra_disks=node_extra_disks(spec, n))
         created.append(name)
     for n in nodes:
-        vcenter.power(spec.vcenter, vm_name(spec, n), "on", ctx.log)
+        prov.power_on(n, ctx.log)
+    text = prov.instructions(nodes, iso_ref)
+    if text:
+        for line in text.splitlines():
+            ctx.log(line)
     return created
 
 
 def _deploy_agent(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     ensure_tools(ctx, spec)
-    spec = ensure_macs(store, spec, ctx.log)
+    prov = _provider(spec, store)
+    spec = prov.prepare_nodes(ctx.log)
     render.write_install_dir(store, spec, ctx.log)
     store.set_status("deploying")
     d = str(store.install_dir)
     env = trust_env(store, spec, ctx.log)
-    ctx.log(f"Agent-based installation: {_describe(spec)}")
+    ctx.log(f"Agent-based installation on {prov.title}: {_describe(spec)}")
     ctx.log("Building agent ISO (downloads the RHCOS base image on first use)")
     try:
         ctx.run([installer(spec), "agent", "create", "image", "--dir", d, "--log-level", "info"], env=env)
@@ -251,7 +259,7 @@ def _deploy_agent(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
         ctx.run([installer(spec), "agent", "wait-for", "install-complete", "--dir", d, "--log-level", "info"], env=env)
         for n in nodes:
             try:
-                vcenter.eject_cdrom(spec.vcenter, vm_name(spec, n), ctx.log)
+                prov.eject(n, ctx.log)
             except Exception as ex:
                 ctx.log(f"could not eject ISO from {vm_name(spec, n)}: {ex}")
     except Exception:
@@ -271,9 +279,12 @@ def job_destroy(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
         else:
             ctx.log("No metadata.json; nothing for the installer to destroy")
     else:
+        prov = _provider(spec, store)
         for n in spec.nodes:
+            if n.role == "bootstrap":
+                continue
             try:
-                vcenter.destroy_vm(spec.vcenter, vm_name(spec, n), ctx.log)
+                prov.destroy(n, ctx.log)
             except Exception as ex:
                 ctx.log(f"{vm_name(spec, n)}: {ex}")
     for f in ("auth", "metadata.json", ".openshift_install_state.json"):

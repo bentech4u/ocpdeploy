@@ -109,8 +109,18 @@ def _fd_rows(spec, inv) -> List[Dict]:
 
 @router.post("/vcenter/check")
 def vcenter_check(name: str):
+    """Infrastructure checks: vCenter for IPI and vSphere agent clusters, otherwise the
+    chosen provider (Proxmox, KVM, Redfish, manual). Saved under the 'vcenter' category."""
     s = _store(name)
     spec = s.load()
+    if spec.install_method == "agent" and spec.provider != "vsphere":
+        from ..services.providers import get_provider
+        try:
+            res = get_provider(spec, s).check()
+        except Exception as ex:
+            res = [{"name": "provider", "status": "fail", "expected": "", "actual": str(ex)[-200:], "hint": "Check the Infrastructure step"}]
+        s.save_checks("vcenter", res)
+        return res
     vc = spec.vcenter
     res: List[Dict] = []
     if not vc.host:

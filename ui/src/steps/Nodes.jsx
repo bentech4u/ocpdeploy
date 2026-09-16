@@ -169,6 +169,24 @@ export default function Nodes(p) {
           <span className="help">Names become DNS labels under {spec.name}.{spec.base_domain}. MACs are generated deterministically and used for VM NICs in the agent method. Data disks are extra thin-provisioned VMDKs (storage pools).</span></div>
       </div>
 
+      {spec.install_method === 'agent' && spec.provider === 'redfish' && (
+        <div className="panel">
+          <h2>Baseboard management (Redfish)</h2>
+          <p className="lead">BMC address and credentials per machine. Leave the user and password empty to use the defaults from the Infrastructure step. The MAC column in the node table can stay empty when the BMC reports the NIC on the machine network first.</p>
+          <table className="tbl">
+            <thead><tr><th>Node</th><th>BMC address</th><th>Username</th><th>Password</th><th>System ID (optional)</th></tr></thead>
+            <tbody>{spec.nodes.filter(n => n.role !== 'bootstrap').map(n => { const i = spec.nodes.indexOf(n); return (
+              <tr key={i}>
+                <td className="mono">{n.name}</td>
+                <td><Text value={n.bmc_address || ''} onChange={v => setN(i, 'bmc_address', v)} placeholder="https://idrac-m1.example.com" /></td>
+                <td><Text value={n.bmc_username || ''} onChange={v => setN(i, 'bmc_username', v)} placeholder="default" /></td>
+                <td><Text type="password" value={n.bmc_password === '********' ? '' : (n.bmc_password || '')} onChange={v => setN(i, 'bmc_password', v)} placeholder={n.bmc_password === '********' ? 'stored' : 'default'} /></td>
+                <td><Text value={n.bmc_system_id || ''} onChange={v => setN(i, 'bmc_system_id', v)} placeholder="System.Embedded.1" /></td>
+              </tr>) })}</tbody>
+          </table>
+        </div>
+      )}
+
       <div className="panel">
         <h2>Node pools</h2>
         <p className="lead">Groups of workers with their own size, labels, taints and data disks — GPU nodes, storage nodes, big-memory nodes. Members are created on day 2 ({isIPI ? 'one MachineSet per node with its static IP' : 'node ISO, then labelled'}), so the day-1 install stays uniform.</p>

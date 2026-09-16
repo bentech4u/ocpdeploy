@@ -22,13 +22,45 @@ def cluster_vms(store: ClusterStore, spec: ClusterSpec) -> List[Dict]:
             role = "master" if "-master-" in v["name"] else "worker"
             out.append({"name": v["name"], "role": role, "power": v["power"], "ip": v["ip"], "tools": v["tools"]})
         return out
+    from .providers import get_provider
+    prov = get_provider(spec, store)
     out = []
-    states = vcenter.power_states(spec.vcenter, [f"{spec.name}-{n.name}" for n in spec.nodes if n.role != "bootstrap"])
     for n in spec.nodes:
         if n.role == "bootstrap":
             continue
-        out.append({"name": f"{spec.name}-{n.name}", "role": "master" if n.role == "master" else "worker", "power": states.get(f"{spec.name}-{n.name}", "missing"), "ip": n.ip, "tools": ""})
+        out.append({"name": f"{spec.name}-{n.name}", "role": "master" if n.role == "master" else "worker", "power": prov.power_state(n), "ip": n.ip, "tools": prov.title, "node": n.name})
     return out
+
+
+def _node_of(spec: ClusterSpec, vm: Dict):
+    return next((n for n in spec.nodes if n.name == vm.get("node")), None)
+
+
+def _shutdown_vm(spec: ClusterSpec, store, vm: Dict, log):
+    if spec.install_method == "ipi":
+        with vcenter.session(spec.vcenter) as si:
+            v = vcenter._find(si.content, vcenter.vim.VirtualMachine, vm["name"])
+            v.ShutdownGuest()
+        return
+    from .providers import get_provider
+    get_provider(spec, store).shutdown_guest(_node_of(spec, vm), log)
+
+
+def _states(spec: ClusterSpec, store, vms: List[Dict]) -> Dict[str, str]:
+    if spec.install_method == "ipi":
+        return vcenter.power_states(spec.vcenter, [v["name"] for v in vms])
+    from .providers import get_provider
+    prov = get_provider(spec, store)
+    return {v["name"]: prov.power_state(_node_of(spec, v)) for v in vms}
+
+
+def _power(spec: ClusterSpec, store, vm: Dict, state: str, log):
+    if spec.install_method == "ipi":
+        vcenter.power(spec.vcenter, vm["name"], state, log)
+        return
+    from .providers import get_provider
+    prov = get_provider(spec, store)
+    (prov.power_on if state == "on" else prov.power_off)(_node_of(spec, vm), log)
 
 
 def status(store: ClusterStore, spec: ClusterSpec) -> Dict:
@@ -76,24 +108,24 @@ def job_shutdown(ctx: JobContext, store: ClusterStore, spec: ClusterSpec, backup
         ctx.log(f"Shutting down {label}: {', '.join(v['name'] for v in on)}")
         for v in on:
             try:
-                with vcenter.session(spec.vcenter) as si:
-                    vm = vcenter._find(si.content, vcenter.vim.VirtualMachine, v["name"])
-                    vm.ShutdownGuest()
+                _shutdown_vm(spec, store, v, ctx.log)
                 ctx.log(f"{v['name']}: guest shutdown requested")
             except Exception as ex:
                 ctx.log(f"{v['name']}: {str(ex)[-100:]}; will power off")
         deadline = time.time() + 600
+        left = [v["name"] for v in on]
         while time.time() < deadline:
-            states = vcenter.power_states(spec.vcenter, [v["name"] for v in on])
+            states = _states(spec, store, on)
             left = [n for n, s in states.items() if s != "poweredOff"]
             if not left:
                 break
             ctx.log(f"waiting for {len(left)} {label} to power off: {', '.join(left)}")
             time.sleep(15)
         else:
-            for n in left:
-                ctx.log(f"{n}: forcing power off")
-                vcenter.power(spec.vcenter, n, "off", ctx.log)
+            for v in on:
+                if v["name"] in left:
+                    ctx.log(f"{v['name']}: forcing power off")
+                    _power(spec, store, v, "off", ctx.log)
         ctx.log(f"{label}: all powered off")
     ctx.log("Cluster is shut down. Use 'Start cluster' to bring it back.")
 
@@ -106,7 +138,7 @@ def job_startup(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     workers = [v for v in vms if v["role"] != "master"]
     ctx.log("Powering on masters: " + ", ".join(v["name"] for v in masters))
     for v in masters:
-        vcenter.power(spec.vcenter, v["name"], "on", ctx.log)
+        _power(spec, store, v, "on", ctx.log)
 
     def api_up():
         ops.get(store, spec, "nodes")
@@ -114,7 +146,7 @@ def job_startup(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     ops.wait_for("Kubernetes API", api_up, timeout=1800, interval=20, log=ctx.log)
     ctx.log("Powering on workers: " + ", ".join(v["name"] for v in workers))
     for v in workers:
-        vcenter.power(spec.vcenter, v["name"], "on", ctx.log)
+        _power(spec, store, v, "on", ctx.log)
 
     def nodes_ready():
         ops.approve_csrs(store, spec, ctx.log)

@@ -40,8 +40,9 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 * **Two install methods**
   * *IPI* (installer-provisioned): the installer creates and destroys the VMs; static IPs; your own
     load balancer (`loadBalancer: UserManaged`). Needs OpenShift 4.15+.
-  * *Agent-based (UPI)*: the app builds the agent ISO, uploads it to a datastore and creates the VMs
-    itself (platform `none`).
+  * *Agent-based (UPI)*: the app builds the agent ISO and creates the machines itself (platform
+    `none`) on **vSphere, Proxmox VE, KVM/libvirt (over SSH), bare metal through Redfish virtual
+    media (iDRAC, iLO, XClarity, Supermicro), or manually** (download the ISO, boot it yourself).
 * **Version list from Red Hat's update graph** (stable / fast / candidate), tools downloaded and
   checksum-verified per version.
 * **vCenter integration** – certificate captured and accepted by fingerprint (VMCA root pulled from
@@ -76,6 +77,9 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   * *etcd backup* – on demand or on a systemd timer, tarballs kept on the installer host.
   * *Power* – graceful shutdown (backup, workers then masters via VMware Tools) and startup with
     CSR approval.
+  * *Applications* – one-click lab workloads in their own namespaces with Routes and generated
+    credentials: Gitea, MinIO, Grafana (wired to the cluster Prometheus with a cluster dashboard),
+    Keycloak (Red Hat build, via its operator, with PostgreSQL) and Harbor (official Helm chart).
 * Secrets (vCenter password, SSH passwords, pull secret) are encrypted at rest.
 
 ## Requirements
@@ -85,6 +89,9 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   `registry.npmjs.org`. 4 vCPU / 8 GB / 50 GB is plenty.
 * vCenter 7 or 8 with the ESXi host(s) **inside a cluster object** (IPI refuses standalone hosts),
   a datastore, a port group, and an account with the privileges the installer documents.
+  Agent-based installs can use Proxmox VE (API token), a KVM host (SSH, libvirt + virt-install,
+  a bridge on the node network), Redfish-capable servers (virtual media licence where the vendor
+  needs one; the BMCs must reach this app over HTTP), or any machine you boot by hand.
 * A DNS server you control for `api`, `api-int`, `*.apps` and (recommended) the node names.
 * One or two EL9 VMs for HAProxy, or an external load balancer.
 * A Red Hat pull secret (console.redhat.com/openshift/install/pull-secret).
@@ -159,6 +166,12 @@ cd ui && npm run build         # rebuild the static bundle
   Machines. Scaling up creates IPAddressClaims that nothing serves, so the app writes the IPAddress
   objects itself. Removing a worker deletes its Machine (drain + VM destroy).
 * Backups and power operations need no SSH key: they go through `oc debug node` and VMware Tools.
+* Redfish and manual installs fetch the ISO from `http://<installer-host>:<port>/api/clusters/<name>/iso/…`.
+  Set `OCPDEPLOY_ADVERTISE_URL` (or the ISO URL base in the Infrastructure step) when the BMC
+  network sees this host under a different address. IPI stays vSphere-only: it is the installer
+  that talks to the hypervisor there.
+* Harbor runs with the `anyuid` SCC granted to its namespace's default service account (the chart
+  pins UID 10000). Grafana, Gitea (rootless image) and MinIO run under the restricted SCC.
 
 ## Support
 

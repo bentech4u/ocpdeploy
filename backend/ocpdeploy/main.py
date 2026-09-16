@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .routers import clusters, discovery, checks, ops, day2
+from .routers import clusters, discovery, checks, ops, day2, apps
 from .settings import STATIC_DIR, LISTEN_HOST, LISTEN_PORT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -26,6 +26,7 @@ app.include_router(discovery.router)
 app.include_router(checks.router)
 app.include_router(ops.router)
 app.include_router(day2.router)
+app.include_router(apps.router)
 
 
 @app.exception_handler(Exception)
@@ -37,10 +38,12 @@ async def _unhandled(request: Request, exc: Exception):
 if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+    _static_root = STATIC_DIR.resolve()
+
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str):
-        f = STATIC_DIR / path
-        if path and f.is_file():
+        f = (STATIC_DIR / path).resolve()
+        if path and f.is_file() and f.is_relative_to(_static_root):
             return FileResponse(f)
         return FileResponse(STATIC_DIR / "index.html")
 

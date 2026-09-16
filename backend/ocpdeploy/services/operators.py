@@ -22,6 +22,7 @@ CATALOG: Dict[str, Dict] = {
     "nfd": {"title": "Node Feature Discovery", "namespace": "openshift-nfd", "desc": "Labels nodes with hardware features (needed by the NVIDIA GPU operator).",
             "post": [{"apiVersion": "nfd.openshift.io/v1", "kind": "NodeFeatureDiscovery", "metadata": {"name": "nfd-instance", "namespace": "openshift-nfd"}, "spec": {}}]},
     "gpu-operator-certified": {"title": "NVIDIA GPU Operator", "namespace": "nvidia-gpu-operator", "source": "certified-operators", "desc": "Drivers, device plugin and monitoring for GPU pools. Create a ClusterPolicy afterwards."},
+    "rhbk-operator": {"title": "Red Hat build of Keycloak", "namespace": "keycloak", "desc": "Keycloak identity server operator; the Apps page deploys an instance with PostgreSQL."},
     "web-terminal": {"title": "Web Terminal", "namespace": "openshift-operators", "all_namespaces": True, "desc": "A terminal with oc/kubectl inside the web console."},
 }
 

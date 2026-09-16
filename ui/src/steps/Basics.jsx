@@ -44,6 +44,18 @@ export default function Basics(p) {
           { value: 'ipi', label: 'IPI — installer-provisioned on vSphere', desc: 'Installer creates VMs via vCenter. Bootstrap VM required in the node list. Needs 4.15+ for static IPs with your own load balancer.' },
           { value: 'agent', label: 'Agent-based (UPI)', desc: 'App builds the agent ISO, uploads it and creates VMs itself. No bootstrap VM; the first master is the rendezvous host.' },
         ]} />
+        {spec.install_method === 'agent' && (
+          <>
+            <h3>Where the nodes run</h3>
+            <RadioCards value={spec.provider || 'vsphere'} onChange={v => update(s => s.provider = v)} options={[
+              { value: 'vsphere', label: 'VMware vSphere', desc: 'The app uploads the ISO to a datastore and creates the VMs through vCenter.' },
+              { value: 'proxmox', label: 'Proxmox VE', desc: 'REST API with an API token: ISO upload, VM creation with UEFI and virtio, power control.' },
+              { value: 'libvirt', label: 'KVM / libvirt', desc: 'A Linux host with libvirt reached over SSH: virt-install creates the VMs on a bridge.' },
+              { value: 'redfish', label: 'Bare metal (Redfish)', desc: 'Servers with iDRAC, iLO, XClarity or Supermicro BMCs boot the ISO as virtual media served by this app.' },
+              { value: 'manual', label: 'Manual', desc: 'The app builds and serves the ISO; you boot the machines yourself on any platform.' },
+            ]} />
+          </>
+        )}
         <h3>OpenShift version</h3>
         <Alert kind="error">{verr}</Alert>
         {!versions && !verr && <p className="muted">Querying the Red Hat update graph…</p>}

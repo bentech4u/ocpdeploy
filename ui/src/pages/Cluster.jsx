@@ -23,11 +23,14 @@ import Storage from '../steps/Storage.jsx'
 import Operators from '../steps/Operators.jsx'
 import Backup from '../steps/Backup.jsx'
 import Power from '../steps/Power.jsx'
+import Apps from '../steps/Apps.jsx'
 
 /* key, label, component, group, done(spec) */
 const STEPS = [
   ['basics', 'Cluster & version', Basics, 'Configure', s => !!s.ocp_version && !!s.base_domain],
-  ['vcenter', 'vCenter', VCenter, 'Configure', s => !!(s.vcenter.host && s.vcenter.datacenter && s.vcenter.cluster && s.vcenter.datastore && s.vcenter.network)],
+  ['vcenter', 'Infrastructure', VCenter, 'Configure', s => s.install_method === 'agent' && s.provider !== 'vsphere'
+    ? ({ proxmox: !!(s.proxmox.host && s.proxmox.token_id && s.proxmox.node), libvirt: !!s.libvirt.host, redfish: s.nodes.some(n => n.bmc_address), manual: true }[s.provider] || false)
+    : !!(s.vcenter.host && s.vcenter.datacenter && s.vcenter.cluster && s.vcenter.datastore && s.vcenter.network)],
   ['network', 'Network', Network, 'Configure', s => !!(s.network.machine_cidr && s.network.gateway && s.network.dns_servers?.length)],
   ['nodes', 'Nodes', Nodes, 'Configure', s => s.nodes.some(n => n.role === 'master')],
   ['lb', 'Load balancer', LoadBalancer, 'Configure', s => s.lb.mode === 'none' || (s.lb.mode === 'external' ? !!(s.lb.external_api.ip && s.lb.external_apps.ip) : s.lb.vms.length > 0)],
@@ -46,6 +49,7 @@ const STEPS = [
   ['operators', 'Operators', Operators, 'Operate', null],
   ['backup', 'etcd backup', Backup, 'Operate', s => !!s.day2?.backup?.schedule],
   ['power', 'Power', Power, 'Operate', null],
+  ['apps', 'Applications', Apps, 'Operate', null],
 ]
 
 const TOPOLOGY = { standard: 'Standard', compact: 'Compact 3-node', sno: 'Single node' }

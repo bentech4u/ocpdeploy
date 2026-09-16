@@ -14,6 +14,7 @@ InstallMethod = Literal["ipi", "agent"]
 LBMode = Literal["haproxy", "external", "none"]
 HAProxyLayout = Literal["split", "ha"]
 Topology = Literal["standard", "compact", "sno"]
+ProviderName = Literal["vsphere", "proxmox", "libvirt", "redfish", "manual"]   # where agent-based nodes run
 PoolKind = Literal["general", "gpu", "storage"]
 
 _LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
@@ -30,6 +31,10 @@ class NodeSpec(BaseModel):
     failure_domain: str = ""          # name of a VCenterSpec.failure_domains entry (IPI); "" = default placement
     pool: str = ""                    # name of a ClusterSpec.pools entry (workers only); "" = plain day-1 worker
     extra_disks_gb: List[int] = Field(default_factory=list)   # additional data disks (storage pools)
+    bmc_address: str = ""             # Redfish (bare metal): https://idrac.example.com or an IP
+    bmc_username: str = ""            # empty = RedfishSpec defaults
+    bmc_password: str = ""            # secret
+    bmc_system_id: str = ""           # Redfish System member id when the BMC has several (e.g. System.Embedded.1)
 
     @field_validator("ip")
     @classmethod
@@ -81,6 +86,36 @@ class VCenterSpec(BaseModel):
     guest_id: str = "rhel9_64Guest"
     failure_domains: List[FailureDomain] = Field(default_factory=list)   # empty = single implicit domain from the fields above
     cluster_os_image: str = ""    # optional http(s) URL of the RHCOS OVA (disconnected IPI installs)
+
+
+class ProxmoxSpec(BaseModel):
+    host: str = ""
+    port: int = 8006
+    token_id: str = ""            # user@realm!tokenname
+    token_secret: str = ""        # secret
+    node: str = ""                # Proxmox node that runs the VMs
+    storage: str = "local-lvm"    # disks
+    iso_storage: str = "local"    # ISO images (content type iso)
+    bridge: str = "vmbr0"
+    verify_tls: bool = False
+
+
+class LibvirtSpec(BaseModel):
+    host: str = ""                # KVM host reachable over SSH
+    ssh_user: str = "root"
+    ssh_port: int = 22
+    ssh_password: str = ""        # secret; empty = installer host's SSH key
+    pool: str = "default"
+    bridge: str = "br0"
+    images_dir: str = "/var/lib/libvirt/images"
+    os_variant: str = "rhel9.0"
+
+
+class RedfishSpec(BaseModel):
+    username: str = ""            # default BMC credentials for nodes without their own
+    password: str = ""            # secret
+    verify_tls: bool = False
+    iso_url_base: str = ""        # http://<installer-host>:8080 as seen from the BMCs; auto-detected when empty
 
 
 class HAProxyVM(BaseModel):
@@ -300,7 +335,11 @@ class ClusterSpec(BaseModel):
     ocp_version: str = ""
     install_method: InstallMethod = "ipi"
     topology: Topology = "standard"
+    provider: ProviderName = "vsphere"   # agent method only; IPI is always vSphere
     vcenter: VCenterSpec = Field(default_factory=VCenterSpec)
+    proxmox: ProxmoxSpec = Field(default_factory=ProxmoxSpec)
+    libvirt: LibvirtSpec = Field(default_factory=LibvirtSpec)
+    redfish: RedfishSpec = Field(default_factory=RedfishSpec)
     lb: LBSpec = Field(default_factory=LBSpec)
     network: NetworkSpec = Field(default_factory=NetworkSpec)
     nodes: List[NodeSpec] = Field(default_factory=list)
@@ -387,4 +426,8 @@ SECRET_PATHS = [
     ("day2", "certs", "acme", "cloudflare_token"),
     ("day2", "certs", "acme", "aws_secret_key"),
     ("day2", "certs", "acme", "rfc2136_tsig_secret"),
+    ("proxmox", "token_secret"),
+    ("libvirt", "ssh_password"),
+    ("redfish", "password"),
+    ("nodes", [], "bmc_password"),
 ]
