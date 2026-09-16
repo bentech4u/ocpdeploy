@@ -96,7 +96,7 @@ export default function Clusters() {
           </dl>
         </div>
       )}
-      <div className="footer-note">ocpdeploy · OpenShift on vSphere install console</div>
+      <div className="footer-note">ocpdeploy · OpenShift on vSphere install console · <a href="https://github.com/bentech4u/ocpdeploy" target="_blank" rel="noreferrer">GitHub</a> · <a href="https://buymeacoffee.com/bentech4u" target="_blank" rel="noreferrer">☕ Buy me a coffee</a></div>
     </div>
   )
 }

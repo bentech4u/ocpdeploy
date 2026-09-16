@@ -33,6 +33,7 @@ export default function App() {
         <div className="right">
           {sys?.hostname && <span className="chip" title="installer host">{sys.hostname}</span>}
           {sys?.app_version && <span className="chip">v{sys.app_version}</span>}
+          <a className="chip coffee" href="https://buymeacoffee.com/bentech4u" target="_blank" rel="noreferrer" title="Support the project">☕ Buy me a coffee</a>
         </div>
       </header>
       <Routes>

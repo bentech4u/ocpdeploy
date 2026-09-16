@@ -1,5 +1,7 @@
 # ocpdeploy
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-ffdd00?style=flat&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/bentech4u)
+
 A small web console that installs and operates **OpenShift 4 clusters on VMware vSphere** from a
 single Linux "installer" host. It wraps `openshift-install`, talks to vCenter directly, manages
 HAProxy load balancers over SSH, validates DNS, and streams every job log live in the browser.
@@ -157,3 +159,8 @@ cd ui && npm run build         # rebuild the static bundle
   Machines. Scaling up creates IPAddressClaims that nothing serves, so the app writes the IPAddress
   objects itself. Removing a worker deletes its Machine (drain + VM destroy).
 * Backups and power operations need no SSH key: they go through `oc debug node` and VMware Tools.
+
+## Support
+
+If ocpdeploy saved you an evening of YAML, you can [buy me a coffee](https://buymeacoffee.com/bentech4u).
+Issues and pull requests are welcome on GitHub.
