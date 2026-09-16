@@ -10,7 +10,17 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 ## Features
 
 * **Wizard per cluster** – cluster & version → vCenter → network → nodes → load balancer → secrets →
-  DNS → pre-flight → review & deploy → operate.
+  proxy & mirror → DNS → pre-flight → review & deploy → operate.
+* **Topologies** – standard (3 masters + workers), compact three-node (schedulable masters, routers on
+  the control plane) and single-node OpenShift (no load balancer needed: DNS points at the node).
+* **Failure domains** – several vSphere clusters / datacenters as regions and zones for IPI; nodes can
+  be pinned to a domain; the app creates and attaches the `openshift-region` / `openshift-zone` tags.
+* **Node pools** – GPU, storage or general worker pools with their own size, labels, taints and extra
+  data disks. Members are created on day 2 (one MachineSet per node with its static IP for IPI, node
+  ISO for agent installs) so the day-1 install stays uniform.
+* **Proxy and disconnected installs** – `proxy:` in install-config, mirror registry with CA and
+  `imageDigestSources`, an internal RHCOS OVA URL, and an integrated `oc-mirror --v2` job that mirrors
+  the release (plus optional operators and extra images) and records the resulting mappings.
 * **Two install methods**
   * *IPI* (installer-provisioned): the installer creates and destroys the VMs; static IPs; your own
     load balancer (`loadBalancer: UserManaged`). Needs OpenShift 4.15+.
@@ -30,7 +40,7 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 * **Pre-flight** – host, secrets, node sanity, DNS, LB ports, vCenter objects, capacity, privileges.
 * **Live deploy log**, installer runs as a transient systemd unit and survives app restarts.
 * **Day 2** – credentials & ingress CA download, node/operator dashboard, remove bootstrap from the
-  LB, add infra nodes (static IPs), move ingress / monitoring / registry to infra, resume an
+  LB, add infra and pool nodes (static IPs), move ingress / monitoring / registry to infra, resume an
   interrupted install, destroy.
 * Secrets (vCenter password, SSH passwords, pull secret) are encrypted at rest.
 
@@ -54,7 +64,7 @@ git clone https://github.com/bentech4u/ocpdeploy.git /opt/ocpdeploy
 ```
 
 Then open `http://<installer-host>:8080/`. Set `OCPDEPLOY_PORT` before running the script for a
-different port.
+different port. `OCPDEPLOY_STATIC_DIR` points the backend at a different UI build (used for testing).
 
 The script installs Python 3.12 and Node 22 from AppStream, creates a venv, builds the frontend,
 generates an SSH key for root if none exists, and enables the `ocpdeploy` systemd service.
@@ -71,6 +81,7 @@ clusters/<name>/       per-cluster state (git-ignored)
   cluster.json         spec, secrets encrypted with .secret_key
   state.sqlite         jobs, logs, check results
   install/             openshift-install working dir (auth/kubeconfig, auth/kubeadmin-password)
+  mirror/              imageset-config.yaml, oc-mirror workspace and cache (disconnected installs)
   logs/                installer log copies, job outputs
 bin/<version>/         openshift-install, oc (git-ignored)
 install.sh             installer for a new host
@@ -104,3 +115,8 @@ cd ui && npm run build         # rebuild the static bundle
 * Slow image pulls on the bootstrap node can exhaust the installer's 15-minute provisioning window.
   Nothing is lost: use *Resume interrupted install* on the Operate page.
 * Browser warnings on the console are expected; import the ingress CA from the Operate page.
+* A VM that powers on but never reports an IP to vCenter almost always sits on the wrong port group.
+  Check the network chosen in the vCenter step against the machine network VLAN.
+* Disconnected: the pull secret must also carry the mirror registry login, and `oc-mirror` runs on the
+  installer host, which needs internet access (directly or through the proxy) while mirroring.
+* Data disks on day-2 MachineSets need OpenShift 4.18+; older releases silently ignore them.

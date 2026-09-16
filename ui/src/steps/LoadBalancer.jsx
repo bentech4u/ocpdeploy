@@ -16,6 +16,8 @@ export default function LoadBalancer(p) {
   const [render, setRender] = useState(null)
   const [job, setJob] = useState(null)
   const [backends, setBackends] = useState(null)
+  const masters = spec.nodes.filter(n => n.role === 'master')
+  const sno = spec.topology === 'sno' || masters.length === 1
 
   const setLB = (k, v) => update(s => s.lb[k] = v)
   const setVM = (i, k, v) => update(s => s.lb.vms[i][k] = v)
@@ -33,16 +35,26 @@ export default function LoadBalancer(p) {
     const r = await api.post(`/api/clusters/${p.name}/lb/push`); setJob(r.job_id)
   })
 
+  const modes = [
+    { value: 'haproxy', label: 'HAProxy managed by this app', desc: 'Give SSH access to one or two Enterprise Linux VMs. The app installs HAProxy, writes /etc/haproxy/conf.d/ocp-<cluster>.cfg, validates and reloads. Other services on the same HAProxy are preserved.' },
+    { value: 'external', label: 'External, pre-configured', desc: 'You run your own balancer (F5, NSX, another HAProxy…). Paste the IP and FQDN; the app validates DNS and ports and tells you which backends to configure.' },
+  ]
+  if (sno || lb.mode === 'none') modes.push({ value: 'none', label: 'No load balancer (single node)', desc: 'DNS for api, api-int and *.apps points straight at the node. Only valid for a single-node cluster.' })
+
   return (
     <div>
       <div className="panel">
         <h2>Load balancer</h2>
-        <p className="lead">API traffic (6443, 22623) and application ingress (80, 443) must be balanced across the nodes. Choose how.</p>
+        <p className="lead">API traffic (6443, 22623) and application ingress (80, 443) must be balanced across the nodes. Choose how.{sno ? ' A single-node cluster can skip the balancer entirely.' : ''}</p>
         <Alert kind="error">{err}</Alert>
-        <RadioCards value={lb.mode} onChange={v => setLB('mode', v)} options={[
-          { value: 'haproxy', label: 'HAProxy managed by this app', desc: 'Give SSH access to one or two Enterprise Linux VMs. The app installs HAProxy, writes /etc/haproxy/conf.d/ocp-<cluster>.cfg, validates and reloads. Other services on the same HAProxy are preserved.' },
-          { value: 'external', label: 'External, pre-configured', desc: 'You run your own balancer (F5, NSX, another HAProxy…). Paste the IP and FQDN; the app validates DNS and ports and tells you which backends to configure.' },
-        ]} />
+        <RadioCards value={lb.mode} onChange={v => setLB('mode', v)} options={modes} />
+
+        {lb.mode === 'none' && (
+          <div>
+            {!sno && <Alert kind="error">"No load balancer" is only valid for a single-node cluster; this cluster has {masters.length} masters.</Alert>}
+            <Alert kind="info">Create A records for <span className="mono">api.{spec.name}.{spec.base_domain}</span>, <span className="mono">api-int.{spec.name}.{spec.base_domain}</span> and <span className="mono">*.apps.{spec.name}.{spec.base_domain}</span> pointing at <b>{masters[0]?.ip || 'the node IP'}</b>. The DNS step lists them.</Alert>
+          </div>
+        )}
 
         {lb.mode === 'haproxy' && (
           <div>
@@ -70,7 +82,7 @@ export default function LoadBalancer(p) {
                     <td><Text value={vm.ssh_user} onChange={v => setVM(i, 'ssh_user', v)} /></td>
                     <td><Text type="password" value={vm.ssh_password} onChange={v => setVM(i, 'ssh_password', v)} placeholder={vm.ssh_password === MASK ? 'stored' : 'empty = use installer SSH key'} /></td>
                     <td style={{ width: 80 }}><Num value={vm.ssh_port} onChange={v => setVM(i, 'ssh_port', v)} /></td>
-                    <td><button onClick={() => delVM(i)}>✕</button></td>
+                    <td><button className="small" onClick={() => delVM(i)} title="remove">✕</button></td>
                   </tr>
                 ))}
               </tbody>

@@ -4,7 +4,7 @@ import { Alert } from '../components/Field.jsx'
 import Footer from '../components/Footer.jsx'
 import CheckTable, { Summary } from '../components/CheckTable.jsx'
 
-const CATS = [['general', 'Installer host, secrets & node sanity'], ['dns', 'DNS'], ['lb', 'Load balancer'], ['vcenter', 'vCenter']]
+const CATS = [['general', 'Installer host, secrets & node sanity'], ['dns', 'DNS'], ['lb', 'Load balancer'], ['vcenter', 'vCenter'], ['mirror', 'Mirror registry']]
 
 export default function Preflight(p) {
   const [res, setRes] = useState({})
@@ -27,7 +27,7 @@ export default function Preflight(p) {
           {all.length > 0 && <span className="help">last run {all[0].ts ? all[0].ts.slice(0, 19) + 'Z' : 'just now'}</span>}</div>
         {all.length > 0 && <Summary rows={all} />}
         {all.length > 0 && (fails ? <Alert kind="warn">{fails} failing check(s). The deploy button stays enabled, but expect the install to fail.</Alert> : <Alert kind="ok">No failing checks.</Alert>)}
-        {CATS.map(([k, label]) => res[k] && <div key={k}><h3>{label}</h3><CheckTable rows={res[k]} /></div>)}
+        {CATS.map(([k, label]) => res[k] && res[k].length > 0 && <div key={k}><h3>{label}</h3><CheckTable rows={res[k]} /></div>)}
       </div>
       <Footer {...p} />
     </div>

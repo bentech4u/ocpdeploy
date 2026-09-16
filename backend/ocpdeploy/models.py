@@ -1,15 +1,22 @@
 """Cluster specification. This is the single source of truth a cluster folder
 stores; every generated artefact (install-config, agent-config, haproxy.cfg,
-DNS checklist, machinesets) is rendered from it."""
-from typing import List, Literal, Optional
+DNS checklist, machinesets, imageset-config) is rendered from it.
+
+Every field added after the first release has a default so older cluster.json
+files keep loading unchanged."""
+from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 import ipaddress
 import re
 
 Role = Literal["bootstrap", "master", "worker", "infra"]
 InstallMethod = Literal["ipi", "agent"]
-LBMode = Literal["haproxy", "external"]
+LBMode = Literal["haproxy", "external", "none"]
 HAProxyLayout = Literal["split", "ha"]
+Topology = Literal["standard", "compact", "sno"]
+PoolKind = Literal["general", "gpu", "storage"]
+
+_LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
 
 
 class NodeSpec(BaseModel):
@@ -20,6 +27,9 @@ class NodeSpec(BaseModel):
     cpus: int = 4
     memory_mb: int = 16384
     disk_gb: int = 120
+    failure_domain: str = ""          # name of a VCenterSpec.failure_domains entry (IPI); "" = default placement
+    pool: str = ""                    # name of a ClusterSpec.pools entry (workers only); "" = plain day-1 worker
+    extra_disks_gb: List[int] = Field(default_factory=list)   # additional data disks (storage pools)
 
     @field_validator("ip")
     @classmethod
@@ -30,8 +40,29 @@ class NodeSpec(BaseModel):
     @field_validator("name")
     @classmethod
     def _name(cls, v):
-        if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", v):
+        if not re.fullmatch(_LABEL, v):
             raise ValueError("node name must be a lowercase DNS label")
+        return v
+
+
+class FailureDomain(BaseModel):
+    """One vSphere placement (region/zone). Region tags go on the datacenter,
+    zone tags on the compute cluster; the installer spreads machines across them."""
+    name: str = ""
+    region: str = ""
+    zone: str = ""
+    datacenter: str = ""
+    cluster: str = ""
+    datastore: str = ""
+    network: str = ""
+    resource_pool: str = ""
+    folder: str = ""
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        if v and not re.fullmatch(r"[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?", v):
+            raise ValueError("failure domain name may contain letters, digits, - and _")
         return v
 
 
@@ -48,6 +79,8 @@ class VCenterSpec(BaseModel):
     cert_thumbprint: str = ""     # SHA1 fingerprint accepted by the user
     cert_pem: str = ""            # PEM captured from the server, fed as trust bundle
     guest_id: str = "rhel9_64Guest"
+    failure_domains: List[FailureDomain] = Field(default_factory=list)   # empty = single implicit domain from the fields above
+    cluster_os_image: str = ""    # optional http(s) URL of the RHCOS OVA (disconnected IPI installs)
 
 
 class HAProxyVM(BaseModel):
@@ -102,15 +135,72 @@ class NetworkSpec(BaseModel):
         return v
 
 
+class Taint(BaseModel):
+    key: str = ""
+    value: str = ""
+    effect: Literal["NoSchedule", "PreferNoSchedule", "NoExecute"] = "NoSchedule"
+
+
+class NodePool(BaseModel):
+    """A group of workers created on day 2 with their own size, labels and taints
+    (GPU nodes, storage nodes, big-memory nodes...). Members are NodeSpec entries
+    with role=worker and pool=<name>."""
+    name: str
+    kind: PoolKind = "general"
+    description: str = ""
+    labels: Dict[str, str] = Field(default_factory=dict)
+    taints: List[Taint] = Field(default_factory=list)
+    extra_disks_gb: List[int] = Field(default_factory=list)   # default data disks for members
+    serve_ingress: bool = False    # include members in the apps load balancer pool
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        if not re.fullmatch(_LABEL, v) or v in ("master", "worker", "infra", "bootstrap"):
+            raise ValueError("pool name must be a lowercase DNS label other than master/worker/infra/bootstrap")
+        return v
+
+
+class ProxySpec(BaseModel):
+    http_proxy: str = ""
+    https_proxy: str = ""
+    no_proxy: str = ""            # comma separated; the cluster networks are always added by the installer
+
+
+class MirrorSource(BaseModel):
+    """One imageDigestSources entry: pulls for `source` are redirected to `mirrors`."""
+    source: str = ""
+    mirrors: List[str] = Field(default_factory=list)
+
+
+class MirrorSpec(BaseModel):
+    """Disconnected / restricted-network installs through a mirror registry."""
+    enabled: bool = False
+    registry: str = ""            # host[:port] of the mirror registry, e.g. mirror.example.com:8443
+    ca_pem: str = ""              # registry CA (PEM), added to the trust bundle
+    tls_verify: bool = True
+    sources: List[MirrorSource] = Field(default_factory=list)
+    channel: str = ""             # update channel to mirror from; default stable-4.N
+    catalog: str = ""             # operator catalog for oc-mirror; default redhat-operator-index:v4.N
+    operators: List[str] = Field(default_factory=list)          # package names to mirror
+    additional_images: List[str] = Field(default_factory=list)
+    mirrored_version: str = ""    # last version successfully mirrored by the app
+
+
 class ClusterSpec(BaseModel):
     name: str
     base_domain: str = ""
     ocp_version: str = ""
     install_method: InstallMethod = "ipi"
+    topology: Topology = "standard"
     vcenter: VCenterSpec = Field(default_factory=VCenterSpec)
     lb: LBSpec = Field(default_factory=LBSpec)
     network: NetworkSpec = Field(default_factory=NetworkSpec)
     nodes: List[NodeSpec] = Field(default_factory=list)
+    pools: List[NodePool] = Field(default_factory=list)
+    proxy: ProxySpec = Field(default_factory=ProxySpec)
+    mirror: MirrorSpec = Field(default_factory=MirrorSpec)
+    additional_trust_bundle: str = ""   # extra CA certificates (PEM) to trust cluster-wide
     pull_secret: str = ""         # secret
     ssh_public_key: str = ""
     fips: bool = False
@@ -138,6 +228,10 @@ class ClusterSpec(BaseModel):
 
     def _lb_ip(self, which: str) -> str:
         lb = self.lb
+        if lb.mode == "none":
+            # single node: DNS points straight at the node
+            m = self.nodes_by_role("master")
+            return m[0].ip if m else ""
         if lb.mode == "external":
             return (lb.external_api if which == "api" else lb.external_apps).ip
         if lb.layout == "ha":
@@ -149,6 +243,20 @@ class ClusterSpec(BaseModel):
 
     def nodes_by_role(self, *roles: str) -> List[NodeSpec]:
         return [n for n in self.nodes if n.role in roles]
+
+    def day1_workers(self) -> List[NodeSpec]:
+        """Workers the installer creates on day 1 (members of a named pool are day-2)."""
+        return [n for n in self.nodes if n.role == "worker" and not n.pool]
+
+    def pooled_workers(self, pool: Optional[str] = None) -> List[NodeSpec]:
+        return [n for n in self.nodes if n.role == "worker" and n.pool and (pool is None or n.pool == pool)]
+
+    def pool(self, name: str) -> Optional[NodePool]:
+        return next((p for p in self.pools if p.name == name), None)
+
+    @property
+    def is_sno(self) -> bool:
+        return len(self.nodes_by_role("master")) == 1
 
     @property
     def minor(self) -> int:

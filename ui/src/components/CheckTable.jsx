@@ -18,7 +18,7 @@ export default function CheckTable({ rows, showLevel }) {
   if (!rows || !rows.length) return <p className="muted">No results yet.</p>
   return (
     <table className="tbl">
-      <thead><tr><th style={{ width: 70 }}>Status</th><th>Check</th>{showLevel && <th>Level</th>}<th>Expected</th><th>Actual</th><th>Hint</th></tr></thead>
+      <thead><tr><th style={{ width: 90 }}>Status</th><th>Check</th>{showLevel && <th>Level</th>}<th>Expected</th><th>Actual</th><th>Hint</th></tr></thead>
       <tbody>
         {rows.map((r, i) => (
           <tr key={i}>

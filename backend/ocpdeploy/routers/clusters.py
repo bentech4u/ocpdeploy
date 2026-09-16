@@ -72,7 +72,14 @@ def delete(name: str):
     shutil.rmtree(s.dir)
 
 
+class PoolPlan(BaseModel):
+    name: str
+    count: int = 1
+    size: Dict[str, int] = {"cpus": 8, "memory_mb": 32768, "disk_gb": 120}
+
+
 class NodePlan(BaseModel):
+    topology: str = "standard"    # standard | compact | sno
     masters: int = 3
     workers: int = 3
     infra: int = 0
@@ -81,6 +88,7 @@ class NodePlan(BaseModel):
     master_size: Dict[str, int] = {"cpus": 4, "memory_mb": 16384, "disk_gb": 120}
     worker_size: Dict[str, int] = {"cpus": 4, "memory_mb": 16384, "disk_gb": 120}
     infra_size: Dict[str, int] = {"cpus": 4, "memory_mb": 16384, "disk_gb": 120}
+    pools: List[PoolPlan] = []
     name_style: str = "master01"   # or master-0
 
 
@@ -92,23 +100,33 @@ def plan_nodes(name: str, body: NodePlan):
     import ipaddress
     ip = ipaddress.ip_address(body.first_ip) if body.first_ip else None
     nodes: List[Dict] = []
+    masters, workers = body.masters, body.workers
+    if body.topology == "sno":
+        masters, workers = 1, 0
+    elif body.topology == "compact":
+        masters, workers = 3, 0
 
     def nm(prefix, i):
         return f"{prefix}{i+1:02d}" if body.name_style == "master01" else f"{prefix}-{i}"
 
-    def add(role, prefix, count, size):
+    def add(role, prefix, count, size, pool=""):
         nonlocal ip
         for i in range(count):
-            nodes.append({"name": nm(prefix, i) if role != "bootstrap" else "bootstrap", "role": role,
-                          "ip": str(ip) if ip else "", "mac": mac_for(name, nm(prefix, i) if role != "bootstrap" else "bootstrap"), **size})
+            nname = nm(prefix, i) if role != "bootstrap" else "bootstrap"
+            n = {"name": nname, "role": role, "ip": str(ip) if ip else "", "mac": mac_for(name, nname), **size}
+            if pool:
+                n["pool"] = pool
+            nodes.append(n)
             if ip:
                 ip += 1
 
     if body.bootstrap and raw.get("install_method") == "ipi":
         add("bootstrap", "bootstrap", 1, body.master_size)
-    add("master", "master", body.masters, body.master_size)
+    add("master", "master", masters, body.master_size)
     add("infra", "infra", body.infra, body.infra_size)
-    add("worker", "worker", body.workers, body.worker_size)
+    add("worker", "worker", workers, body.worker_size)
+    for p in body.pools:
+        add("worker", p.name, p.count, p.size, pool=p.name)
     return nodes
 
 

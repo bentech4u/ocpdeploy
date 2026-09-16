@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from .. import jobs
-from ..services import render, deploy, day2, kube, tools
+from ..services import render, deploy, day2, kube, tools, mirror
 from .clusters import _store
 
 router = APIRouter(prefix="/api/clusters/{name}", tags=["ops"])
@@ -31,6 +31,8 @@ def preview(name: str):
         out = {"install-config.yaml": render.to_yaml(ic)}
         if spec.install_method == "agent":
             out["agent-config.yaml"] = render.to_yaml(render.agent_config(spec))
+        if spec.mirror.enabled:
+            out["imageset-config.yaml"] = render.to_yaml(render.imageset_config(spec))
         return out
     except Exception as ex:
         raise HTTPException(422, str(ex))
@@ -98,6 +100,51 @@ def add_infra(name: str, body: InfraReq):
     s = _store(name)
     spec = s.load()
     return _start(s, "add-infra", lambda ctx: day2.job_add_infra(ctx, s, spec, body.nodes))
+
+
+@router.post("/day2/add-nodes")
+def add_nodes(name: str, body: InfraReq):
+    """Create infra nodes and node-pool members (all of them, or the names given)."""
+    s = _store(name)
+    spec = s.load()
+    if not day2.add_targets(spec, body.nodes):
+        raise HTTPException(422, "no infra or pool nodes to add; define them in the Nodes step")
+    return _start(s, "add-nodes", lambda ctx: day2.job_add_nodes(ctx, s, spec, body.nodes))
+
+
+# ---- mirror (disconnected installs)
+class RegistryReq(BaseModel):
+    registry: Optional[str] = None
+
+
+@router.post("/mirror/cert")
+def mirror_cert(name: str, body: RegistryReq):
+    spec = _store(name).load()
+    reg = body.registry or spec.mirror.registry
+    if not reg:
+        raise HTTPException(422, "no registry given")
+    try:
+        return mirror.fetch_cert(reg)
+    except Exception as ex:
+        raise HTTPException(502, f"could not fetch certificate from {reg}: {ex}")
+
+
+@router.get("/mirror/imageset")
+def mirror_imageset(name: str):
+    spec = _store(name).load()
+    try:
+        return {"imageset-config.yaml": render.to_yaml(render.imageset_config(spec))}
+    except Exception as ex:
+        raise HTTPException(422, str(ex))
+
+
+@router.post("/mirror/run")
+def mirror_run(name: str):
+    s = _store(name)
+    spec = s.load()
+    if not spec.mirror.enabled:
+        raise HTTPException(422, "enable the mirror registry first")
+    return _start(s, "mirror", lambda ctx: mirror.job_mirror(ctx, s, spec))
 
 
 class MoveReq(BaseModel):

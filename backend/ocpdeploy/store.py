@@ -115,10 +115,14 @@ class ClusterStore:
         return ClusterSpec.model_validate(raw)
 
     def public(self) -> Dict[str, Any]:
-        """Spec safe to return over the API: secrets replaced by MASK or ''."""
+        """Spec safe to return over the API: secrets replaced by MASK or ''. Fields added
+        after the file was written are materialised with their defaults."""
         raw = self._read_raw()
         _walk_secret(raw, lambda v, p: MASK if (is_encrypted(v) and v.get("enc")) else "")
-        return raw
+        try:
+            return ClusterSpec.model_validate(raw).model_dump()
+        except Exception:
+            return raw
 
     def update(self, incoming: Dict[str, Any]) -> ClusterSpec:
         """Merge an API payload. Secret fields equal to MASK keep their stored value."""

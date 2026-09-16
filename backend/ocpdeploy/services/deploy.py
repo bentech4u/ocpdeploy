@@ -1,7 +1,9 @@
 """Install / destroy job bodies for both install methods."""
+import ipaddress
 import json
 import time
 from pathlib import Path
+from typing import Dict, List
 
 from ..jobs import JobContext
 from ..models import ClusterSpec
@@ -25,24 +27,69 @@ def installer(spec: ClusterSpec) -> str:
 SYSTEM_CA = "/etc/pki/tls/certs/ca-bundle.crt"
 
 
+def proxy_env(spec: ClusterSpec) -> Dict[str, str]:
+    """HTTP(S)_PROXY / NO_PROXY for processes on the installer host (openshift-install,
+    oc-mirror). Empty when no proxy is configured."""
+    p = spec.proxy
+    if not (p.http_proxy or p.https_proxy):
+        return {}
+    env: Dict[str, str] = {}
+    if p.http_proxy:
+        env["HTTP_PROXY"] = env["http_proxy"] = p.http_proxy
+    if p.https_proxy:
+        env["HTTPS_PROXY"] = env["https_proxy"] = p.https_proxy
+    no: List[str] = ["localhost", "127.0.0.1", ".svc", ".cluster.local"]
+    for item in p.no_proxy.replace(" ", ",").split(","):
+        if item.strip():
+            no.append(item.strip())
+    for extra in (spec.network.machine_cidr, spec.network.cluster_network, spec.network.service_network,
+                  f".{spec.domain}" if spec.base_domain else "", spec.vcenter.host,
+                  spec.mirror.registry.split(":")[0] if spec.mirror.enabled and spec.mirror.registry else ""):
+        if extra and extra not in no:
+            no.append(extra)
+    env["NO_PROXY"] = env["no_proxy"] = ",".join(no)
+    return env
+
+
 def trust_env(store: ClusterStore, spec: ClusterSpec, log=print) -> dict:
     """openshift-install validates vCenter TLS with the host trust store, not with
     additionalTrustBundle. Give it a combined bundle through SSL_CERT_FILE instead
-    of touching the system store."""
-    if not spec.vcenter.cert_pem:
-        return {}
-    combined = store.dir / "ca-trust.pem"
-    parts = []
-    if Path(SYSTEM_CA).exists():
-        parts.append(Path(SYSTEM_CA).read_text())
-    parts.append(spec.vcenter.cert_pem.strip() + "\n")
-    combined.write_text("\n".join(parts))
-    log(f"Using trust bundle {combined.name} (system CAs + vCenter CA) for the installer")
-    return {"SSL_CERT_FILE": str(combined)}
+    of touching the system store. Also carries the proxy variables when set."""
+    env: Dict[str, str] = {}
+    bundle = render.trust_bundle(spec)
+    if bundle:
+        combined = store.dir / "ca-trust.pem"
+        parts = []
+        if Path(SYSTEM_CA).exists():
+            parts.append(Path(SYSTEM_CA).read_text())
+        parts.append(bundle.strip() + "\n")
+        combined.write_text("\n".join(parts))
+        what = ["system CAs"]
+        if spec.vcenter.cert_pem:
+            what.append("vCenter CA")
+        if spec.mirror.enabled and spec.mirror.ca_pem:
+            what.append("mirror registry CA")
+        if spec.additional_trust_bundle:
+            what.append("additional CAs")
+        log(f"Using trust bundle {combined.name} ({' + '.join(what)}) for the installer")
+        env["SSL_CERT_FILE"] = str(combined)
+    pe = proxy_env(spec)
+    if pe:
+        log(f"Proxy for the installer host: {pe.get('HTTPS_PROXY') or pe.get('HTTP_PROXY')} (no_proxy: {pe['NO_PROXY']})")
+        env.update(pe)
+    return env
 
 
 def vm_name(spec: ClusterSpec, node) -> str:
     return f"{spec.name}-{node.name}"
+
+
+def node_extra_disks(spec: ClusterSpec, node) -> List[int]:
+    """Data disks for a node: its own list, else the default of its pool."""
+    if node.extra_disks_gb:
+        return list(node.extra_disks_gb)
+    pool = spec.pool(node.pool) if node.pool else None
+    return list(pool.extra_disks_gb) if pool else []
 
 
 def ensure_macs(store: ClusterStore, spec: ClusterSpec, log) -> ClusterSpec:
@@ -96,11 +143,27 @@ def job_deploy(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     return _deploy_agent(ctx, store, spec)
 
 
+def _describe(spec: ClusterSpec) -> str:
+    m = len(spec.nodes_by_role("master"))
+    w = len(spec.day1_workers())
+    shape = "single-node" if m == 1 else ("compact three-node" if w == 0 else f"{m} masters + {w} workers")
+    extras = []
+    if spec.pooled_workers():
+        extras.append(f"{len(spec.pooled_workers())} pool node(s) on day 2")
+    if spec.vcenter.failure_domains:
+        extras.append(f"{len(spec.vcenter.failure_domains)} failure domains")
+    if spec.mirror.enabled:
+        extras.append(f"mirror {spec.mirror.registry}")
+    if spec.proxy.http_proxy or spec.proxy.https_proxy:
+        extras.append("proxy")
+    return shape + (f" ({', '.join(extras)})" if extras else "")
+
+
 def _deploy_ipi(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     ensure_tools(ctx, spec)
     render.write_install_dir(store, spec, ctx.log)
     store.set_status("deploying")
-    ctx.log("Starting installer-provisioned vSphere installation. This takes 30-50 minutes.")
+    ctx.log(f"Starting installer-provisioned vSphere installation: {_describe(spec)}. This takes 30-50 minutes.")
     try:
         ctx.run([installer(spec), "create", "cluster", "--dir", str(store.install_dir), "--log-level", "info"],
                 env=trust_env(store, spec, ctx.log))
@@ -160,7 +223,8 @@ def create_node_vms(ctx: JobContext, spec: ClusterSpec, nodes, iso_local: Path, 
         if existing:
             ctx.log(f"VM {name} already exists ({existing['power']}); leaving it")
             continue
-        vcenter.create_vm(spec.vcenter, name, n.cpus, n.memory_mb, n.disk_gb, n.mac, remote, ctx.log)
+        vcenter.create_vm(spec.vcenter, name, n.cpus, n.memory_mb, n.disk_gb, n.mac, remote, ctx.log,
+                          extra_disks_gb=node_extra_disks(spec, n))
         created.append(name)
     for n in nodes:
         vcenter.power(spec.vcenter, vm_name(spec, n), "on", ctx.log)
@@ -173,16 +237,18 @@ def _deploy_agent(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     render.write_install_dir(store, spec, ctx.log)
     store.set_status("deploying")
     d = str(store.install_dir)
+    env = trust_env(store, spec, ctx.log)
+    ctx.log(f"Agent-based installation: {_describe(spec)}")
     ctx.log("Building agent ISO (downloads the RHCOS base image on first use)")
     try:
-        ctx.run([installer(spec), "agent", "create", "image", "--dir", d, "--log-level", "info"])
+        ctx.run([installer(spec), "agent", "create", "image", "--dir", d, "--log-level", "info"], env=env)
         iso = next(store.install_dir.glob("agent.*.iso"))
-        nodes = spec.nodes_by_role("master", "worker")
+        nodes = spec.nodes_by_role("master") + spec.day1_workers()
         create_node_vms(ctx, spec, nodes, iso)
         ctx.log("Waiting for bootstrap (rendezvous host = " + spec.nodes_by_role("master")[0].name + ")")
-        ctx.run([installer(spec), "agent", "wait-for", "bootstrap-complete", "--dir", d, "--log-level", "info"])
+        ctx.run([installer(spec), "agent", "wait-for", "bootstrap-complete", "--dir", d, "--log-level", "info"], env=env)
         ctx.log("Waiting for install-complete")
-        ctx.run([installer(spec), "agent", "wait-for", "install-complete", "--dir", d, "--log-level", "info"])
+        ctx.run([installer(spec), "agent", "wait-for", "install-complete", "--dir", d, "--log-level", "info"], env=env)
         for n in nodes:
             try:
                 vcenter.eject_cdrom(spec.vcenter, vm_name(spec, n), ctx.log)
@@ -224,7 +290,7 @@ def job_destroy(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
 # ---------------------------------------------------------------- lb
 def job_push_haproxy(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     if spec.lb.mode != "haproxy":
-        raise RuntimeError("cluster uses an external load balancer")
+        raise RuntimeError("cluster uses an external load balancer" if spec.lb.mode == "external" else "cluster has no load balancer (single node)")
     if not spec.lb.vms:
         raise RuntimeError("no HAProxy VMs configured")
     for vm in spec.lb.vms:

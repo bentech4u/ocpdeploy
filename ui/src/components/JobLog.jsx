@@ -34,11 +34,12 @@ export default function JobLog({ cluster, jobId, onDone, compact }) {
   if (!jobId) return null
   return (
     <div>
-      <div className="row" style={{ marginBottom: 6 }}>
+      <div className="joblog-head">
         <b>Job #{jobId}</b> {job && <span className="muted">{job.kind} · started {job.started}Z</span>}
         <Badge s={status} />
         <span className="spacer" />
-        {status === 'running' && <button onClick={cancel}>Cancel</button>}
+        <span className="help">{lines.length} lines</span>
+        {status === 'running' && <button className="small danger" onClick={cancel}>Cancel</button>}
       </div>
       <pre className="log" ref={pre} style={compact ? { maxHeight: 260 } : {}}>
         {lines.map(l => `${l.ts.slice(11, 19)}  ${l.line}\n`)}

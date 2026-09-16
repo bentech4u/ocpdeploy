@@ -18,7 +18,8 @@ export default function Review(p) {
   const generate = async () => { setErr(''); try { if (p.dirty) await p.save(); const r = await api.post(`/api/clusters/${p.name}/generate`); setJob(r.job_id) } catch (e) { setErr(e.message) } }
   const deploy = async () => {
     setErr('')
-    if (!confirm(`Start the ${spec.install_method.toUpperCase()} installation of ${spec.name}.${spec.base_domain} (${spec.ocp_version})? This creates VMs in vCenter and runs 30-60 minutes.`)) return
+    const shape = { sno: 'single-node', compact: 'compact three-node', standard: 'standard' }[spec.topology] || spec.topology
+    if (!confirm(`Start the ${spec.install_method.toUpperCase()} installation of ${spec.name}.${spec.base_domain} (${spec.ocp_version}, ${shape}${spec.mirror?.enabled ? ', from mirror ' + spec.mirror.registry : ''})? This creates VMs in vCenter and runs 30-60 minutes.`)) return
     try { if (p.dirty) await p.save(); const r = await api.post(`/api/clusters/${p.name}/deploy`); setJob(r.job_id) } catch (e) { setErr(e.message) }
   }
 

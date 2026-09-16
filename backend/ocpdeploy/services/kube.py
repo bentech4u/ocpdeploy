@@ -16,6 +16,10 @@ def kubeconfig(store: ClusterStore) -> str:
 def env(store: ClusterStore) -> dict:
     e = dict(os.environ)
     e["KUBECONFIG"] = kubeconfig(store)
+    trust = store.dir / "ca-trust.pem"
+    if trust.exists():
+        # system CAs + vCenter / mirror registry CAs written by deploy.trust_env
+        e["SSL_CERT_FILE"] = str(trust)
     return e
 
 

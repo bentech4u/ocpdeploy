@@ -336,7 +336,7 @@ def upload_to_datastore(vc: VCenterSpec, local: Path, remote_path: str, log=prin
 
 def create_vm(vc: VCenterSpec, name: str, cpus: int, memory_mb: int, disk_gb: int, mac: str,
               iso_ds_path: Optional[str], log=print, firmware: str = "efi", cores_per_socket: int = 2,
-              extra_config: Optional[Dict[str, str]] = None) -> Dict:
+              extra_config: Optional[Dict[str, str]] = None, extra_disks_gb: Optional[List[int]] = None) -> Dict:
     with session(vc) as si:
         content = si.content
         dc = _find(content, vim.Datacenter, vc.datacenter)
@@ -390,6 +390,23 @@ def create_vm(vc: VCenterSpec, name: str, cpus: int, memory_mb: int, disk_gb: in
         backing.fileName = f"[{vc.datastore}]"
         disk.device.backing = backing
         devices.append(disk)
+        # additional data disks (storage pools); SCSI unit 7 is reserved for the controller
+        for i, gb in enumerate(extra_disks_gb or []):
+            unit = i + 1 if i + 1 < 7 else i + 2
+            extra = vim.vm.device.VirtualDeviceSpec()
+            extra.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
+            extra.fileOperation = vim.vm.device.VirtualDeviceSpec.FileOperation.create
+            extra.device = vim.vm.device.VirtualDisk()
+            extra.device.key = -110 - i
+            extra.device.controllerKey = -100
+            extra.device.unitNumber = unit
+            extra.device.capacityInKB = int(gb) * 1024 * 1024
+            eb = vim.vm.device.VirtualDisk.FlatVer2BackingInfo()
+            eb.diskMode = "persistent"
+            eb.thinProvisioned = True
+            eb.fileName = f"[{vc.datastore}]"
+            extra.device.backing = eb
+            devices.append(extra)
         # NIC
         nic = vim.vm.device.VirtualDeviceSpec()
         nic.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
@@ -438,7 +455,8 @@ def create_vm(vc: VCenterSpec, name: str, cpus: int, memory_mb: int, disk_gb: in
         spec.extraConfig = [vim.option.OptionValue(key=k, value=v) for k, v in ec.items()]
         if firmware == "efi":
             spec.bootOptions = vim.vm.BootOptions(efiSecureBootEnabled=False)
-        log(f"Creating VM {name}: {cpus} vCPU, {memory_mb} MiB, {disk_gb} GiB, MAC {mac}")
+        log(f"Creating VM {name}: {cpus} vCPU, {memory_mb} MiB, {disk_gb} GiB" +
+            (f" + data disks {extra_disks_gb} GiB" if extra_disks_gb else "") + f", MAC {mac}")
         task = folder.CreateVM_Task(config=spec, pool=pool)
         vm = _wait(task, log)
         return vm_summary(vm)

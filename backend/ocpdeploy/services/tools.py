@@ -1,8 +1,9 @@
-"""Download and verify openshift-install / oc for a given version into bin/<version>/."""
+"""Download and verify openshift-install / oc (and oc-mirror on demand) for a given
+version into bin/<version>/."""
 import hashlib
 import tarfile
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import httpx
 
@@ -12,6 +13,8 @@ FILES = {
     "openshift-install": "openshift-install-linux.tar.gz",
     "oc": "openshift-client-linux.tar.gz",
 }
+# oc-mirror ships as a RHEL 9 build and an older RHEL 8 build; prefer the first that exists
+OC_MIRROR_FILES = ["oc-mirror.rhel9.tar.gz", "oc-mirror.tar.gz"]
 
 
 def tool_dir(version: str) -> Path:
@@ -30,6 +33,7 @@ def status(version: str) -> Dict:
         "openshift-install": (d / "openshift-install").exists(),
         "oc": (d / "oc").exists(),
         "kubectl": (d / "kubectl").exists(),
+        "oc-mirror": (d / "oc-mirror").exists(),
     }
 
 
@@ -54,9 +58,7 @@ def _download(url: str, dest: Path, log):
                         last = pct
 
 
-def ensure(version: str, log=print) -> Dict:
-    d = tool_dir(version)
-    d.mkdir(parents=True, exist_ok=True)
+def _checksums(version: str, log) -> Dict[str, str]:
     base = f"{MIRROR}/{version}"
     log(f"Fetching checksums from {base}/sha256sum.txt")
     sums = {}
@@ -66,27 +68,59 @@ def ensure(version: str, log=print) -> Dict:
         parts = line.split()
         if len(parts) == 2:
             sums[parts[1]] = parts[0]
+    return sums
+
+
+def _fetch_verified(version: str, fname: str, d: Path, sums: Dict[str, str], log, executables: List[str]):
+    base = f"{MIRROR}/{version}"
+    tgz = d / fname
+    log(f"Downloading {base}/{fname}")
+    _download(f"{base}/{fname}", tgz, log)
+    digest = hashlib.sha256(tgz.read_bytes()).hexdigest()
+    if fname not in sums:
+        tgz.unlink()
+        raise RuntimeError(f"{fname} missing from sha256sum.txt")
+    if digest != sums[fname]:
+        tgz.unlink()
+        raise RuntimeError(f"checksum mismatch for {fname}")
+    log(f"  sha256 OK {digest[:16]}…")
+    with tarfile.open(tgz) as t:
+        t.extractall(d, filter="data")
+    tgz.unlink()
+    (d / "README.md").unlink(missing_ok=True)
+    for exe in executables:
+        p = d / exe
+        if p.exists():
+            p.chmod(0o755)
+
+
+def ensure(version: str, log=print) -> Dict:
+    d = tool_dir(version)
+    d.mkdir(parents=True, exist_ok=True)
+    sums = _checksums(version, log)
     for tool, fname in FILES.items():
         if (d / tool).exists():
             log(f"{tool} {version} already present")
             continue
-        tgz = d / fname
-        log(f"Downloading {base}/{fname}")
-        _download(f"{base}/{fname}", tgz, log)
-        digest = hashlib.sha256(tgz.read_bytes()).hexdigest()
-        if fname not in sums:
-            raise RuntimeError(f"{fname} missing from sha256sum.txt")
-        if digest != sums[fname]:
-            tgz.unlink()
-            raise RuntimeError(f"checksum mismatch for {fname}")
-        log(f"  sha256 OK {digest[:16]}…")
-        with tarfile.open(tgz) as t:
-            t.extractall(d, filter="data")
-        tgz.unlink()
-        (d / "README.md").unlink(missing_ok=True)
-        for exe in ("openshift-install", "oc", "kubectl"):
-            p = d / exe
-            if p.exists():
-                p.chmod(0o755)
+        _fetch_verified(version, fname, d, sums, log, ["openshift-install", "oc", "kubectl"])
     log(f"Tools ready in {d}")
     return status(version)
+
+
+def ensure_oc_mirror(version: str, log=print) -> Path:
+    """Fetch oc-mirror for the version (used for disconnected installs)."""
+    d = tool_dir(version)
+    d.mkdir(parents=True, exist_ok=True)
+    if (d / "oc-mirror").exists():
+        log(f"oc-mirror {version} already present")
+        return d / "oc-mirror"
+    sums = _checksums(version, log)
+    for fname in OC_MIRROR_FILES:
+        if fname in sums:
+            _fetch_verified(version, fname, d, sums, log, ["oc-mirror"])
+            break
+    else:
+        raise RuntimeError(f"no oc-mirror archive published for {version}")
+    if not (d / "oc-mirror").exists():
+        raise RuntimeError("archive did not contain an oc-mirror binary")
+    return d / "oc-mirror"
