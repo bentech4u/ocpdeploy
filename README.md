@@ -7,6 +7,20 @@ HAProxy load balancers over SSH, validates DNS, and streams every job log live i
 Built for home labs and small environments where you have vCenter, your own DNS server and one or
 two Linux VMs for HAProxy, and you want repeatable installs without hand-editing YAML.
 
+![Cluster list](docs/clusters.png)
+
+*Nodes step: topology, node table and pools.*
+
+![Nodes step](docs/nodes.png)
+
+*Health page after the install: operators, nodes, alerts, CSRs.*
+
+![Cluster health](docs/health.png)
+
+*Operate page in dark mode (follows the OS theme).*
+
+![Operate page](docs/operate-dark.png)
+
 ## Features
 
 * **Wizard per cluster** – cluster & version → vCenter → network → nodes → load balancer → secrets →
