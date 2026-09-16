@@ -52,13 +52,33 @@ def get(name: str):
     return _store(name).public()
 
 
+def _friendly(ex: Exception, body: Dict[str, Any]) -> str:
+    """Turn a pydantic ValidationError into readable lines like 'node master01: IP is empty'."""
+    errors = getattr(ex, "errors", None)
+    if not callable(errors):
+        return str(ex)
+    lines = []
+    for e in errors():
+        loc = list(e.get("loc", []))
+        msg = e.get("msg", "")
+        if loc and loc[0] == "nodes" and len(loc) > 1 and isinstance(loc[1], int):
+            node = (body.get("nodes") or [{}])[loc[1]] if loc[1] < len(body.get("nodes") or []) else {}
+            field = ".".join(str(x) for x in loc[2:]) or "row"
+            if field == "ip" and not node.get("ip"):
+                msg = "IP address is empty"
+            lines.append(f"node {node.get('name') or '#' + str(loc[1] + 1)}: {field} — {msg}")
+        else:
+            lines.append(f"{'.'.join(str(x) for x in loc)}: {msg}")
+    return "; ".join(lines) if lines else str(ex)
+
+
 @router.put("/{name}")
 def update(name: str, body: Dict[str, Any]):
     s = _store(name)
     try:
         s.update(body)
     except ValueError as ex:
-        raise HTTPException(422, str(ex))
+        raise HTTPException(422, _friendly(ex, body))
     return s.public()
 
 

@@ -25,11 +25,13 @@ export default function Nodes(p) {
   const [plan, setPlan] = useState({ ...TOPO_COUNTS[topo], infra: 0, bootstrap: true, first_ip: '', master_size: { ...SIZE }, worker_size: { ...SIZE }, infra_size: { ...SIZE }, name_style: 'master01' })
   const [poolCounts, setPoolCounts] = useState({})
   const [preset, setPreset] = useState('gpu')
+  const [app, setApp] = useState({ role: 'infra', count: 3, first_ip: '', cpus: 4, memory_mb: 16384, disk_gb: 120 })
   const [err, setErr] = useState('')
   useEffect(() => { setPlan(pl => ({ ...pl, ...TOPO_COUNTS[topo] })) }, [topo])
 
   const generate = async () => {
     setErr('')
+    if (spec.nodes.length && !confirm(`Replace all ${spec.nodes.length} node rows with a freshly generated table? To add nodes to an existing cluster use "Append nodes" below instead.`)) return
     try {
       const pools = spec.pools.filter(pl => (poolCounts[pl.name] || 0) > 0).map(pl => ({ name: pl.name, count: poolCounts[pl.name], size: POOL_PRESETS[pl.kind]?.size || POOL_PRESETS.general.size }))
       const nodes = await api.post(`/api/clusters/${p.name}/nodes/plan`, { ...plan, topology: topo, pools })
@@ -37,6 +39,35 @@ export default function Nodes(p) {
     } catch (e) { setErr(e.message) }
   }
   const setN = (i, k, v) => update(s => s.nodes[i][k] = v)
+  const append = () => {
+    setErr('')
+    const isPool = app.role !== 'infra'
+    const prefix = isPool ? app.role : 'infra'
+    const style = spec.nodes.some(n => /-\d+$/.test(n.name)) && !spec.nodes.some(n => /\d\d$/.test(n.name)) ? 'dash' : 'pad'
+    const existing = spec.nodes.map(n => n.name).filter(n => n.startsWith(prefix)).map(n => parseInt(n.slice(prefix.length).replace('-', ''), 10)).filter(Number.isFinite)
+    let idx = existing.length ? Math.max(...existing) + 1 : (style === 'dash' ? 0 : 1)
+    let ip = null
+    if (app.first_ip) {
+      const parts = app.first_ip.trim().split('.').map(Number)
+      if (parts.length !== 4 || parts.some(x => !Number.isInteger(x) || x < 0 || x > 255)) { setErr('First IP is not a valid IPv4 address'); return }
+      ip = parts
+    }
+    const used = new Set(spec.nodes.map(n => n.ip))
+    const rows = []
+    for (let i = 0; i < (app.count || 0); i++) {
+      const name = style === 'dash' ? `${prefix}-${idx}` : `${prefix}${String(idx).padStart(2, '0')}`
+      idx++
+      let ipStr = ''
+      if (ip) {
+        ipStr = ip.join('.')
+        if (used.has(ipStr)) { setErr(`${ipStr} is already used by another node`); return }
+        used.add(ipStr)
+        ip = [...ip]; ip[3]++; if (ip[3] > 254) { ip[3] = 1; ip[2]++ }
+      }
+      rows.push({ name, role: isPool ? 'worker' : 'infra', ip: ipStr, mac: '', cpus: app.cpus, memory_mb: app.memory_mb, disk_gb: app.disk_gb, pool: isPool ? app.role : '', failure_domain: '', extra_disks_gb: [] })
+    }
+    update(s => s.nodes.push(...rows))
+  }
   const add = () => update(s => s.nodes.push({ name: '', role: 'worker', ip: '', mac: '', ...SIZE, pool: '', failure_domain: '', extra_disks_gb: [] }))
   const del = (i) => update(s => s.nodes.splice(i, 1))
   const addPool = () => {
@@ -96,6 +127,18 @@ export default function Nodes(p) {
         </table>
         <p className="help">Minimums: master 4 vCPU / 16 GB / 120 GB, worker 2 vCPU / 8 GB / 120 GB, single node 8 vCPU / 16 GB / 120 GB. Bootstrap uses the master size; pool members use their pool's preset size.</p>
         <div className="toolbar"><button className="primary" onClick={generate}>Generate table {spec.nodes.length ? '(replaces current)' : ''}</button></div>
+
+        <h3>Append nodes <span className="help">— add day-2 nodes to an existing table without touching the other rows</span></h3>
+        {spec.status === 'installed' && <Alert kind="info">This cluster is installed. Append the infra or pool nodes here, save, then create them from Operate → "Add infra & pool nodes". Do not regenerate the table.</Alert>}
+        <div className="grid3">
+          <Field label="Role"><Select value={app.role} onChange={v => setApp({ ...app, role: v })} options={[{ value: 'infra', label: 'infra' }, ...spec.pools.map(pl => ({ value: pl.name, label: `pool: ${pl.name}` }))]} /></Field>
+          <Field label="Count"><Num value={app.count} onChange={v => setApp({ ...app, count: v })} /></Field>
+          <Field label="First IP" help="Assigned sequentially; must be free in the machine network"><Text value={app.first_ip} onChange={v => setApp({ ...app, first_ip: v })} placeholder="192.168.68.237" /></Field>
+          <Field label="vCPU"><Num value={app.cpus} onChange={v => setApp({ ...app, cpus: v })} /></Field>
+          <Field label="Memory MB"><Num value={app.memory_mb} onChange={v => setApp({ ...app, memory_mb: v })} /></Field>
+          <Field label="Disk GB"><Num value={app.disk_gb} onChange={v => setApp({ ...app, disk_gb: v })} /></Field>
+        </div>
+        <div className="toolbar"><button className="primary" onClick={append} disabled={!app.count}>Append {app.count} {app.role} node(s)</button></div>
 
         <h3>Node table <span className="help">— {counts}</span></h3>
         <table className="tbl">
