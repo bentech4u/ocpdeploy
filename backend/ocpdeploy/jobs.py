@@ -7,6 +7,7 @@ import json
 import os
 import re
 import queue
+import shlex
 import subprocess
 import threading
 import traceback
@@ -62,8 +63,10 @@ class JobContext:
         unit = f"ocpdeploy-{self.store.name}-job{self.job_id}-{self.step}"
         logfile = self.store.logs_dir / f"job{self.job_id}-{self.step}.out"
         logfile.touch()
-        args = ["systemd-run", "--quiet", "--unit", unit, "-p", f"StandardOutput=append:{logfile}",
-                "-p", f"StandardError=append:{logfile}", "-p", "KillMode=mixed"]
+        # Output is redirected by the launched process itself rather than with
+        # StandardOutput=append: on SELinux-enforcing hosts systemd (init_t) may not
+        # open files under /opt (usr_t), which fails the unit with status 209/STDOUT.
+        args = ["systemd-run", "--quiet", "--unit", unit, "-p", "KillMode=mixed"]
         if cwd:
             args += ["--working-directory", cwd]
         e = {"HOME": os.environ.get("HOME", "/root"), "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
@@ -72,7 +75,7 @@ class JobContext:
             e.update(env)
         for k, v in e.items():
             args += ["--setenv", f"{k}={v}"]
-        args += ["--"] + cmd
+        args += ["--", "/bin/bash", "-c", f'exec "$@" >> {shlex.quote(str(logfile))} 2>&1', "ocpdeploy-job"] + cmd
         r = subprocess.run(args, capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(f"systemd-run failed: {r.stderr.strip()[-300:]}")
