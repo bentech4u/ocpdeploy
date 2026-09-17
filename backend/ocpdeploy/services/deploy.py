@@ -164,9 +164,24 @@ def _deploy_ipi(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     render.write_install_dir(store, spec, ctx.log)
     store.set_status("deploying")
     ctx.log(f"Starting installer-provisioned vSphere installation: {_describe(spec)}. This takes 30-50 minutes.")
+    env = trust_env(store, spec, ctx.log)
+    d = str(store.install_dir)
     try:
-        ctx.run([installer(spec), "create", "cluster", "--dir", str(store.install_dir), "--log-level", "info"],
-                env=trust_env(store, spec, ctx.log))
+        try:
+            ctx.run([installer(spec), "create", "cluster", "--dir", d, "--log-level", "info"], env=env)
+        except Exception as first:
+            # The installer gives the control-plane VMs 15 minutes to clone, boot and report
+            # an IP. Slow hypervisors miss that while the VMs keep booting fine; instead of
+            # stopping, carry on exactly like "Resume interrupted install" would.
+            if not _provisioning_timeout(store):
+                raise
+            ctx.log("Installer gave up waiting for the machines to provision, but the VMs are still booting.")
+            ctx.log("Continuing automatically with wait-for bootstrap-complete (this is what Resume does).")
+            ctx.run([installer(spec), "wait-for", "bootstrap-complete", "--dir", d, "--log-level", "info"], env=env)
+            ctx.log("Bootstrap complete; removing bootstrap resources")
+            ctx.run([installer(spec), "destroy", "bootstrap", "--dir", d, "--log-level", "info"], env=env, check=False)
+            ctx.log("Waiting for install-complete")
+            ctx.run([installer(spec), "wait-for", "install-complete", "--dir", d, "--log-level", "info"], env=env)
     except Exception:
         store.set_status("failed")
         _copy_log(ctx, store)
@@ -174,6 +189,18 @@ def _deploy_ipi(ctx: JobContext, store: ClusterStore, spec: ClusterSpec):
     _copy_log(ctx, store)
     _finish(ctx, store)
     ctx.log("Install complete. Remove the bootstrap entry from the API load balancer (Day-2 > Remove bootstrap).")
+
+
+def _provisioning_timeout(store: ClusterStore) -> bool:
+    """True when the installer's last error was the machine provisioning window, and the
+    state needed to resume exists."""
+    if not (store.install_dir / ".openshift_install_state.json").exists():
+        return False
+    log = store.install_dir / ".openshift_install.log"
+    if not log.exists():
+        return False
+    tail = log.read_bytes()[-20000:].decode(errors="replace")
+    return ("failed to provision control-plane machines" in tail or "machines are not ready" in tail) and "level=error" in tail
 
 
 def _copy_log(ctx, store):
