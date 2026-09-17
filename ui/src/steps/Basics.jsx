@@ -26,7 +26,13 @@ export default function Basics(p) {
 
   const m = versions?.minors.find(x => x.minor === minor)
   const list = m ? (m.channels[channel] || []) : []
-  const download = async () => { const r = await api.post(`/api/clusters/${p.name}/tools/download`); setJob(r.job_id) }
+  const download = async () => {
+    setVerr('')
+    try {
+      if (p.dirty) { if (!(await p.save())) return }   // the download job reads the saved version
+      const r = await api.post(`/api/clusters/${p.name}/tools/download`); setJob(r.job_id)
+    } catch (e) { setVerr(e.message) }
+  }
   const [tplMsg, setTplMsg] = useState('')
   const saveTemplate = async (secrets) => {
     const name = prompt(`Template name (saved on the installer host${secrets ? ', including decrypted secrets' : ', without secrets'})`, `${spec.name}-${spec.topology}`)
@@ -92,7 +98,7 @@ export default function Basics(p) {
                 <span>oc: <b>{tool.oc ? 'present' : 'missing'}</b></span>
                 <span className="help">{tool.on_mirror ? 'available on mirror.openshift.com' : 'not found on the mirror'}</span>
                 <span className="spacer" />
-                <button onClick={download} disabled={tool['openshift-install'] && tool.oc}>Download & verify now</button>
+                <button onClick={download} disabled={tool['openshift-install'] && tool.oc}>{p.dirty ? 'Save & download now' : 'Download & verify now'}</button>
               </div>
             )}
             {job && <div style={{ marginTop: 10 }}><JobLog cluster={p.name} jobId={job} compact onDone={() => setJob(j => j)} /></div>}
