@@ -18,7 +18,7 @@ def _recover_jobs():
     from . import jobs
     from .services.deploy import finalize_after_restart
     try:
-        jobs.recover({"deploy": finalize_after_restart})
+        jobs.recover({"deploy": finalize_after_restart, "resume": finalize_after_restart})
     except Exception:
         logging.getLogger("ocpdeploy").exception("job recovery failed")
 app.include_router(clusters.router)

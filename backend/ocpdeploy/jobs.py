@@ -116,6 +116,15 @@ class JobContext:
                 # unit already finished and was garbage collected before we looked
                 break
             time.sleep(1)
+        # the unit ended: drain whatever was written after the last read
+        with open(logfile, "rb") as f:
+            f.seek(pos)
+            chunk = f.read()
+        if chunk:
+            buf += chunk
+            *lines, buf = buf.split(b"\n")
+            for l in lines:
+                self.log(l.decode(errors="replace"))
         if buf:
             self.log(buf.decode(errors="replace"))
         state, result, status = _unit_state(unit)
@@ -238,13 +247,27 @@ def recover(finalizers: Dict[str, Callable] = None):
             ctx = JobContext(store, job_id)
             ctx.seq = seq
             if not live:
-                ctx.log("== app restarted; job process is gone -> marked failed ==")
+                # the command finished (or died) while the app was down: let the finalizer decide
+                fin = finalizers.get(j["kind"])
+                ctx.log("== app restarted; the job's command is no longer running ==")
+                status, code = "failed", 1
+                if fin:
+                    try:
+                        code = fin(ctx, store, 1)
+                        status = "succeeded" if code == 0 else "failed"
+                    except Exception as ex:  # noqa
+                        ctx.log("ERROR: " + str(ex))
+                else:
+                    ctx.log("marked failed")
                 with store.db() as db:
-                    db.execute("UPDATE jobs SET status='failed', finished=?, exit_code=1 WHERE id=?",
-                               (datetime.utcnow().isoformat(timespec="seconds"), job_id))
+                    db.execute("UPDATE jobs SET status=?, finished=?, exit_code=? WHERE id=?",
+                               (status, datetime.utcnow().isoformat(timespec="seconds"), code, job_id))
                 continue
             unit = live[-1]
-            step = int(unit.rsplit("-", 1)[1])
+            try:
+                step = int(unit.removesuffix(".service").rsplit("-", 1)[1])
+            except ValueError:
+                step = max((int(p.stem.rsplit("-", 1)[1]) for p in store.logs_dir.glob(f"job{job_id}-*.out")), default=1)
             logfile = store.logs_dir / f"job{job_id}-{step}.out"
             # resume tailing from the last line we stored (approximate: byte offset of stored lines)
             with store.db() as db:
@@ -260,16 +283,19 @@ def recover(finalizers: Dict[str, Callable] = None):
             _running[store.name] = job_id
             _subscribers[job_id] = []
 
-            def _thread(ctx=ctx, unit=unit, logfile=logfile, pos=pos, kind=j["kind"], store=store, job_id=job_id):
+            def _thread(ctx=ctx, unit=unit, logfile=logfile, pos=pos, kind=j["kind"], store=store, job_id=job_id, step=step):
                 ctx.log(f"== app restarted; re-attached to {unit} ==")
                 status, code = "succeeded", 0
                 try:
+                    _units[job_id] = unit
+                    ctx.step = step
                     code = ctx.follow_unit(unit, logfile, pos)
-                    if code != 0:
-                        status = "failed"
+                    _units.pop(job_id, None)
                     fin = finalizers.get(kind)
                     if fin:
-                        fin(ctx, store, code)
+                        code = fin(ctx, store, code)   # may run the remaining steps and returns the final code
+                    if code != 0:
+                        status = "failed"
                 except Exception as ex:  # noqa
                     status, code = "failed", 1
                     ctx.log("ERROR: " + str(ex))

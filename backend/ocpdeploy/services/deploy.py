@@ -118,14 +118,45 @@ def _finish(ctx: JobContext, store: ClusterStore):
     store.set_status("installed")
 
 
-def finalize_after_restart(ctx: JobContext, store: ClusterStore, code: int):
-    """Post-step for a deploy that was re-attached after an app restart."""
+def _installer_log_has(store: ClusterStore, needle: str) -> bool:
+    log = store.install_dir / ".openshift_install.log"
+    return log.exists() and needle in log.read_bytes()[-200000:].decode(errors="replace")
+
+
+def install_complete(store: ClusterStore) -> bool:
+    return _installer_log_has(store, "Install complete!")
+
+
+def finalize_after_restart(ctx: JobContext, store: ClusterStore, code: int) -> int:
+    """Post-step for a deploy/resume job re-attached after an app restart. The followed
+    unit was one step of the install; run whatever is still missing, then decide."""
+    spec = store.load()
+    d = str(store.install_dir)
+    try:
+        if spec.install_method == "ipi" and (store.install_dir / ".openshift_install_state.json").exists() and not install_complete(store):
+            env = trust_env(store, spec, ctx.log)
+            if code != 0 and not _provisioning_timeout(store):
+                raise RuntimeError(f"installer step failed with exit code {code}; see the log above")
+            if code != 0:
+                ctx.log("Installer gave up waiting for the machines to provision, but the VMs are still booting; continuing.")
+            if not _installer_log_has(store, "Bootstrap status: complete"):
+                ctx.log("Continuing: waiting for bootstrap-complete")
+                ctx.run([installer(spec), "wait-for", "bootstrap-complete", "--dir", d, "--log-level", "info"], env=env)
+            ctx.log("Removing bootstrap resources (no-op if already gone)")
+            ctx.run([installer(spec), "destroy", "bootstrap", "--dir", d, "--log-level", "info"], env=env, check=False)
+            ctx.log("Waiting for install-complete")
+            ctx.run([installer(spec), "wait-for", "install-complete", "--dir", d, "--log-level", "info"], env=env)
+            code = 0
+    except Exception as ex:
+        ctx.log("ERROR: " + str(ex))
+        code = 1
     _copy_log(ctx, store)
-    if code == 0 and (store.install_dir / "auth" / "kubeconfig").exists():
+    if code == 0 and (store.install_dir / "auth" / "kubeconfig").exists() and (spec.install_method != "ipi" or install_complete(store)):
         _finish(ctx, store)
         ctx.log("Install complete (recovered).")
-    else:
-        store.set_status("failed")
+        return 0
+    store.set_status("failed")
+    return 1
 
 
 # ---------------------------------------------------------------- IPI
