@@ -2,31 +2,28 @@
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-ffdd00?style=flat&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/bentech4u)
 
-A small web console that installs and operates **OpenShift 4 clusters on VMware vSphere** from a
-single Linux "installer" host. It wraps `openshift-install`, talks to vCenter directly, manages
-HAProxy load balancers over SSH, validates DNS, and streams every job log live in the browser.
+A web console that installs and operates **OpenShift 4 clusters** from a single Linux "installer"
+host. It wraps `openshift-install`, talks to vCenter (or Proxmox, KVM, Redfish BMCs) directly,
+manages HAProxy load balancers over SSH, validates DNS, and streams every job log live in the
+browser. It can also connect to clusters it did not install and run the same day-2 operations on
+them. Access is protected by a console login.
 
 Built for home labs and small environments where you have vCenter, your own DNS server and one or
 two Linux VMs for HAProxy, and you want repeatable installs without hand-editing YAML.
 
-![Cluster list](docs/clusters.png)
-
-*Nodes step: topology, node table and pools.*
-
-![Nodes step](docs/nodes.png)
-
-*Health page after the install: operators, nodes, alerts, CSRs.*
-
-![Cluster health](docs/health.png)
-
-*Operate page in dark mode (follows the OS theme).*
-
-![Operate page](docs/operate-dark.png)
+| | |
+|---|---|
+| ![Sign in](docs/signin-dark.png) | ![Cluster list](docs/clusters.png) |
+| *Console sign-in (dark theme follows the OS).* | *Installed and connected clusters side by side.* |
+| ![Connect to a cluster](docs/connect.png) | ![Nodes step](docs/nodes.png) |
+| *Connecting an existing cluster: both certificates are checked before a password is sent.* | *Nodes step: topology, node table and pools.* |
+| ![Cluster health](docs/health.png) | ![Operate page](docs/operate-dark.png) |
+| *Health of a connected cluster: operators, alerts, CSRs, nodes.* | *Operate / Day 2 for an installed cluster.* |
 
 ## Features
 
-* **Wizard per cluster** – cluster & version → vCenter → network → nodes → load balancer → secrets →
-  proxy & mirror → DNS → pre-flight → review & deploy → operate.
+* **Wizard per cluster** – cluster & version → infrastructure (vCenter or the agent provider) → network
+  → nodes → load balancer → secrets → proxy & mirror → DNS → pre-flight → review & deploy → operate.
 * **Topologies** – standard (3 masters + workers), compact three-node (schedulable masters, routers on
   the control plane) and single-node OpenShift (no load balancer needed: DNS points at the node).
 * **Failure domains** – several vSphere clusters / datacenters as regions and zones for IPI; nodes can
@@ -54,7 +51,8 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   * *External*: paste IP + FQDN; the app validates DNS/ports and prints the required backend pools.
 * **DNS is validate-only** – a checklist of every required record with hints, checked against your
   DNS server, including stale reverse records.
-* **Pre-flight** – host, secrets, node sanity, DNS, LB ports, vCenter objects, capacity, privileges.
+* **Pre-flight** – host, secrets, node sanity, DNS, LB ports, vCenter objects (or the Proxmox / KVM /
+  Redfish provider), capacity, privileges, region/zone tags, proxy and mirror registry.
 * **Live deploy log**, installer runs as a transient systemd unit and survives app restarts.
 * **Day 2** – credentials & ingress CA download, node/operator dashboard, remove bootstrap from the
   LB, add infra and pool nodes (static IPs), move ingress / monitoring / registry to infra, resume an
