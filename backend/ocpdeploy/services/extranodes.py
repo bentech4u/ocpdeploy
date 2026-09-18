@@ -328,3 +328,196 @@ def label_node(store: ClusterStore, spec: ClusterSpec, node: str, role: str, hos
     if node not in names:
         raise PermissionError("only nodes added from this page can be labelled here")
     return kube.oc(store, spec, ["label", "node", node, f"node-role.kubernetes.io/{role}=", "--overwrite"]).strip()
+
+
+# ---------------------------------------------------------------- hints from an existing node
+_HINT_SCRIPT = r'''
+src=$(findmnt -no SOURCE /sysroot 2>/dev/null || findmnt -no SOURCE /)
+echo "rootdisk=$(lsblk -no PKNAME "$src" 2>/dev/null | head -1)"
+echo "disks=$(lsblk -dno NAME,SIZE,TYPE | awk '$3=="disk"{print $1":"$2}' | paste -sd, -)"
+echo "defroute=$(ip -4 route show default | head -1)"
+dev=$(ip -4 route show default | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
+echo "dev=$dev"
+echo "addr=$(ip -4 -o addr show dev "$dev" 2>/dev/null | awk '{print $4}' | head -1)"
+echo "ports=$(ovs-vsctl list-ports br-ex 2>/dev/null | grep -v '^patch-' | paste -sd, -)"
+echo "nameservers=$(awk '/^nameserver/{print $2}' /etc/resolv.conf | paste -sd, -)"
+exit 0
+'''
+
+
+def hints(store: ClusterStore, spec: ClusterSpec, refresh: bool = False) -> Dict:
+    """Network and disk layout of an existing worker (or master), as defaults and hints."""
+    if not refresh:
+        cached = store.kv_get("extranodes_hints")
+        if cached:
+            return cached
+    nodes = [n for n in ops.nodes_summary(store, spec) if n["ready"] == "True"]
+    pick = next((n for n in nodes if "master" not in n["roles"] and "infra" not in n["roles"]), None) or (nodes[0] if nodes else None)
+    if not pick:
+        raise RuntimeError("no Ready node to read settings from")
+    out = kube.oc(store, spec, ["debug", f"node/{pick['name']}", "--quiet", "--", "chroot", "/host", "bash", "-c", _HINT_SCRIPT], timeout=180)
+    kv = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    addr = kv.get("addr", "")
+    node_ip = addr.split("/")[0] if addr else pick.get("ip", "")
+    dns = [x for x in kv.get("nameservers", "").split(",") if x and x != node_ip and not x.startswith("127.")]
+    gw = ""
+    parts = kv.get("defroute", "").split()
+    if "via" in parts:
+        gw = parts[parts.index("via") + 1]
+    ports = [p for p in kv.get("ports", "").split(",") if p]
+    iface = ports[0] if ports else kv.get("dev", "")
+    disk = kv.get("rootdisk", "")
+    res = {"node": pick["name"], "roles": pick["roles"], "root_device": f"/dev/{disk}" if disk else "", "disks": kv.get("disks", ""),
+           "interface": iface, "bridge": kv.get("dev", "") if ports else "", "prefix": int(addr.split("/")[1]) if "/" in addr else None,
+           "gateway": gw, "dns": dns, "node_ip": node_ip}
+    store.kv_set("extranodes_hints", res)
+    return res
+
+
+# ---------------------------------------------------------------- pre-checks
+def _resolver(servers: List[str]):
+    import dns.resolver
+    r = dns.resolver.Resolver(configure=False)
+    r.nameservers = servers
+    r.timeout, r.lifetime = 2, 4
+    return r
+
+
+def _a(res, name: str) -> List[str]:
+    import dns.exception
+    try:
+        return sorted(str(x) for x in res.resolve(name, "A"))
+    except dns.exception.DNSException:
+        return []
+
+
+def _ptr(res, ip: str) -> List[str]:
+    import dns.exception
+    import dns.reversename
+    try:
+        return sorted(str(x).rstrip(".") for x in res.resolve(dns.reversename.from_address(ip), "PTR"))
+    except dns.exception.DNSException:
+        return []
+
+
+def _pings(ip: str) -> bool:
+    import subprocess
+    try:
+        return subprocess.run(["ping", "-c1", "-W1", ip], capture_output=True, timeout=4).returncode == 0
+    except Exception:
+        return False
+
+
+def _tcp(ip: str, port: int) -> bool:
+    import socket
+    try:
+        with socket.create_connection((ip, port), timeout=3):
+            return True
+    except OSError:
+        return False
+
+
+def precheck(store: ClusterStore, spec: ClusterSpec, hosts: List[Dict]) -> List[Dict]:
+    """Checks before a node ISO is built. 'fail' blocks the build, 'warn' does not."""
+    rows: List[Dict] = []
+
+    def add(scope, name, status, expected, actual, hint=""):
+        rows.append({"host": scope, "name": name, "status": status, "expected": expected, "actual": actual, "hint": hint})
+
+    dom = spec.domain
+    existing = ops.nodes_summary(store, spec)
+    node_names = {n["name"].lower() for n in existing} | {n["name"].split(".")[0].lower() for n in existing}
+    node_ips = {n["ip"] for n in existing if n.get("ip")}
+    net = None
+    if spec.network.machine_cidr:
+        try:
+            net = ipaddress.ip_network(spec.network.machine_cidr, strict=False)
+        except ValueError:
+            net = None
+    # cluster side
+    try:
+        kube.oc(store, spec, ["get", "secret", "pull-secret", "-n", "openshift-config", "-o", "name"], timeout=60)
+        add("cluster", "pull secret readable", "pass", "cluster-admin access", "ok")
+    except Exception as ex:
+        add("cluster", "pull secret readable", "fail", "cluster-admin access", str(ex)[-120:], "The ISO build needs the cluster's pull secret")
+    try:
+        worker = next((m for m in ops.mcp_states(store, spec) if m["name"] == "worker"), None)
+        if worker:
+            ok = not worker["is_degraded"]
+            add("cluster", "worker machine config pool", "pass" if ok else "warn", "not degraded",
+                f"{worker['updated']}/{worker['machines']} updated" + (", degraded" if not ok else ""), "" if ok else "New workers take this pool's configuration; fix it first")
+    except Exception:
+        pass
+    names = [h.get("hostname", "") for h in hosts]
+    ips_all = [ip for h in hosts for ip in host_summary(h)["ips"]]
+    macs_all = [m.lower() for h in hosts for m in host_summary(h)["macs"]]
+    for dup in sorted({m for m in macs_all if macs_all.count(m) > 1}):
+        add("all hosts", f"MAC {dup}", "fail", "unique", "used twice", "Each machine needs its own MAC")
+    for dup in sorted({i for i in ips_all if ips_all.count(i) > 1}):
+        add("all hosts", f"IP {dup}", "fail", "unique", "used twice")
+    api_checked = {}
+    for h in hosts:
+        hn = h.get("hostname", "")
+        summ = host_summary(h)
+        nc = h.get("networkConfig") or {}
+        dns_servers = ((nc.get("dns-resolver") or {}).get("config") or {}).get("server") or []
+        gws = [r.get("next-hop-address") for r in ((nc.get("routes") or {}).get("config") or []) if r.get("destination") in ("0.0.0.0/0", "::/0")]
+        # identity
+        add(hn, "hostname", "fail" if hn.lower() in node_names else "pass", "not an existing node", "already a node" if hn.lower() in node_names else "free",
+            "Pick a new hostname; an existing node already uses it" if hn.lower() in node_names else "")
+        for ip in summ["ips"]:
+            if ip in node_ips:
+                add(hn, f"IP {ip}", "fail", "not used by a node", "an existing node has this IP")
+            if net is not None:
+                inside = ipaddress.ip_address(ip) in net
+                add(hn, f"IP {ip} in machine network", "pass" if inside else "fail", str(net), "inside" if inside else "outside",
+                    "" if inside else "Nodes must be on the cluster's machine network")
+            used = _pings(ip)
+            add(hn, f"IP {ip} free", "warn" if used else "pass", "no reply", "something answers" if used else "no reply",
+                "Another machine already answers on this IP" if used else "")
+        for gw in gws:
+            if gw:
+                up = _pings(gw)
+                add(hn, f"gateway {gw}", "pass" if up else "warn", "answers ping", "answers" if up else "no reply", "" if up else "Some gateways ignore ping; check it is right")
+        # DNS: the new node resolves everything through these servers
+        if not dns_servers:
+            add(hn, "DNS servers", "fail", "at least one", "none", "The node needs DNS to reach api-int")
+            continue
+        res = _resolver(dns_servers)
+        key = ",".join(dns_servers)
+        if key not in api_checked:
+            api_int = _a(res, f"api-int.{dom}")
+            api = _a(res, f"api.{dom}")
+            apps = _a(res, f"ocpdeploy-check.apps.{dom}")
+            api_checked[key] = (api_int, api, apps)
+            add(f"DNS {key}", f"api-int.{dom}", "pass" if api_int else "fail", "resolves", ", ".join(api_int) or "NXDOMAIN / no answer",
+                "" if api_int else f"The node fetches its configuration from api-int.{dom}:22623; add the record or use DNS servers that have it")
+            add(f"DNS {key}", f"api.{dom}", "pass" if api else "warn", "resolves", ", ".join(api) or "no answer")
+            add(f"DNS {key}", f"*.apps.{dom}", "pass" if apps else "warn", "wildcard resolves", ", ".join(apps) or "no answer")
+            if api_int:
+                for port in (22623, 6443):
+                    ok = _tcp(api_int[0], port)
+                    add(f"DNS {key}", f"api-int {api_int[0]}:{port}", "pass" if ok else "warn", "reachable", "open" if ok else "closed / filtered",
+                        "" if ok else "Checked from the installer host; the new node must be able to reach it")
+        api_int, api, apps = api_checked[key]
+        for ip in summ["ips"]:
+            if ip in set(api_int) | set(api) | set(apps):
+                add(hn, f"IP {ip}", "fail", "not a VIP / load balancer address", "same as the API or ingress address")
+        fqdn = f"{hn}.{dom}"
+        fwd = _a(res, fqdn)
+        want = summ["ips"][0] if summ["ips"] else ""
+        if want:
+            if fwd == [want]:
+                add(hn, f"A {fqdn}", "pass", want, want)
+            elif not fwd:
+                add(hn, f"A {fqdn}", "warn", want, "no record", f"Recommended: create {fqdn} -> {want}")
+            else:
+                add(hn, f"A {fqdn}", "fail", want, ", ".join(fwd), f"The record points elsewhere; fix it to {want}")
+            ptr = _ptr(res, want)
+            if ptr == [fqdn]:
+                add(hn, f"PTR {want}", "pass", fqdn, fqdn)
+            elif not ptr:
+                add(hn, f"PTR {want}", "warn", fqdn, "no record", f"Recommended: create PTR {want} -> {fqdn}")
+            else:
+                add(hn, f"PTR {want}", "warn", fqdn, ", ".join(ptr), "A stale reverse record for this IP; delete or fix it")
+    return rows

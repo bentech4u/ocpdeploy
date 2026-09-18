@@ -86,7 +86,12 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   build one node ISO for all of them, download it and boot the machines, watch validations and
   progress with `oc adm node-image monitor`, approve each node's certificate requests with a button
   (only requests from the listed hosts are shown), and add role labels. Uses the cluster's own pull
-  secret and mirror CA, so it works for connected and disconnected clusters alike.
+  secret and mirror CA, so it works for connected and disconnected clusters alike. The page reads an
+  existing worker's install disk, NIC, prefix, gateway and DNS servers as defaults and field hints.
+  Pre-checks run before every build and block it on failures: `api-int` (plus `api` and `*.apps`)
+  must resolve through the hosts' DNS servers, the machine config server (22623) and API (6443) must
+  answer, IPs must be free, unique, inside the machine network and not an API/ingress address,
+  hostnames must not clash with existing nodes; missing or stale forward/reverse records are warnings.
 * **Connected clusters** – manage an existing OpenShift 4 cluster this console did not install, by
   kubeconfig, username and password (OAuth login) or API token. You accept the API (and OAuth)
   certificate by fingerprint first, with a show/hide certificate viewer. Health, upgrades, scaling,

@@ -26,6 +26,19 @@ class BuildReq(BaseModel):
     nodes_config: Optional[str] = None
 
 
+def _hosts(body: "BuildReq") -> List[Dict]:
+    try:
+        hosts = xn.parse_nodes_config(body.nodes_config) if (body.nodes_config or "").strip() else [xn.host_from_form(h) for h in body.hosts]
+    except ValueError as ex:
+        raise HTTPException(422, str(ex))
+    if not hosts:
+        raise HTTPException(422, "add at least one host")
+    names = [h.get("hostname") for h in hosts]
+    if len(set(names)) != len(names):
+        raise HTTPException(422, "hostnames must be unique")
+    return hosts
+
+
 class HostsReq(BaseModel):
     hostnames: List[str]
 
@@ -52,19 +65,37 @@ def build(name: str, body: BuildReq):
     sup = xn.support(s, spec)
     if not sup["supported"]:
         raise HTTPException(409, sup["reason"] or "read-only connection")
-    try:
-        hosts = xn.parse_nodes_config(body.nodes_config) if (body.nodes_config or "").strip() else [xn.host_from_form(h) for h in body.hosts]
-    except ValueError as ex:
-        raise HTTPException(422, str(ex))
-    if not hosts:
-        raise HTTPException(422, "add at least one host")
-    names = [h.get("hostname") for h in hosts]
-    if len(set(names)) != len(names):
-        raise HTTPException(422, "hostnames must be unique")
+    hosts = _hosts(body)
+    rows = xn.precheck(s, spec, hosts)
+    fails = [r for r in rows if r["status"] == "fail"]
+    if fails:
+        raise HTTPException(422, "pre-checks failed: " + "; ".join(f"{r['host']}: {r['name']} ({r['actual']})" for r in fails))
     try:
         return {"job_id": start(s, "node-image", lambda ctx: xn.job_build(ctx, s, spec, hosts))}
     except RuntimeError as ex:
         raise HTTPException(409, str(ex))
+
+
+@router.post("/check")
+def check(name: str, body: BuildReq):
+    """Pre-checks for the hosts (read-only; allowed on read-only connections)."""
+    s, spec = _connected(name)
+    hosts = _hosts(body)
+    try:
+        return xn.precheck(s, spec, hosts)
+    except Exception as ex:
+        raise HTTPException(502, str(ex)[-300:])
+
+
+@router.get("/hints")
+def hints(name: str, refresh: bool = False):
+    s, spec = _connected(name)
+    if spec.read_only:
+        raise HTTPException(403, "reading node settings starts a debug pod; not available on read-only connections")
+    try:
+        return xn.hints(s, spec, refresh)
+    except Exception as ex:
+        raise HTTPException(502, f"could not read an existing node: {str(ex)[-200:]}")
 
 
 @router.post("/monitor")

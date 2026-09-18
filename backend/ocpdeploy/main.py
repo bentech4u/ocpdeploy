@@ -47,7 +47,7 @@ async def _access(request: Request, call_next):
         rest = m.group(2) or ""
         if not _IMPORTED_ALLOWED.match(rest) or (rest == "" and request.method not in ("GET", "PUT")):
             return _deny(409, "not available for a connected cluster")
-        if c.get("read_only") and request.method != "GET" and rest != "/extra-nodes/csrs":
+        if c.get("read_only") and request.method != "GET" and rest not in ("/extra-nodes/csrs", "/extra-nodes/check"):
             return _deny(403, "read-only connection: changes are disabled")
     return await call_next(request)
 
