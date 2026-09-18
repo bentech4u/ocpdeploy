@@ -106,12 +106,12 @@ export default function Clusters() {
       </div>
       {isos.length > 0 && (
         <div className="panel">
-          <h2>Node ISOs</h2>
-          <p className="lead">Built on the Add Extra nodes page of connected clusters. They stay here after the connection ends, until you delete them.</p>
-          <table className="tbl"><thead><tr><th>Cluster</th><th>Built</th><th>Hosts</th><th>Size</th><th></th></tr></thead>
+          <h2>Files kept on the installer host</h2>
+          <p className="lead">Node ISOs (Add Extra nodes) and must-gather archives. They stay here, also after a connection ends, until you delete them.</p>
+          <table className="tbl"><thead><tr><th>Cluster</th><th>Created</th><th>Contents</th><th>Size</th><th></th></tr></thead>
             <tbody>{isos.map(b => <tr key={b.id}><td>{b.cluster}<div className="help mono">{b.server}</div></td><td className="help">{b.created.replace('T', ' ').slice(0, 16)}</td>
-              <td className="mono">{b.hosts.map(h => h.hostname).join(', ')}</td><td>{b.size_mb ? `${b.size_mb} MB` : b.status}</td>
-              <td className="row end">{b.iso && <a className="btn small" href={`/api/extra-isos/${b.id}/download`}>Download</a>}<button className="small danger" onClick={() => delIso(b.id)}>Delete ISO</button></td></tr>)}</tbody></table>
+              <td className="mono">{b.kind === 'mustgather' ? `must-gather (${b.note})` : `node ISO: ${b.hosts.map(h => h.hostname).join(', ')}`}</td><td>{b.size_mb ? `${b.size_mb} MB` : b.status}</td>
+              <td className="row end">{b.file && <a className="btn small" href={`/api/extra-isos/${b.id}/download`}>Download</a>}<button className="small danger" onClick={() => delIso(b.id)}>Delete</button></td></tr>)}</tbody></table>
         </div>
       )}
       <div className="panel">

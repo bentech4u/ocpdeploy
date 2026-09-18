@@ -28,6 +28,16 @@ def env(store: ClusterStore) -> dict:
     return e
 
 
+def min_env(store: ClusterStore) -> dict:
+    """The few variables oc needs, for long commands run as transient units (ctx.run)."""
+    e = {"KUBECONFIG": kubeconfig(store)}
+    full = env(store)
+    for k in ("HOME", "KUBECACHEDIR", "SSL_CERT_FILE"):
+        if k in full and (k != "HOME" or "KUBECACHEDIR" in full):
+            e[k] = full[k]
+    return e
+
+
 def oc_bin(spec: ClusterSpec) -> str:
     p = tools.tool_path(spec.ocp_version, "oc")
     if not p.exists():

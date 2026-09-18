@@ -25,6 +25,10 @@ import Backup from '../steps/Backup.jsx'
 import Power from '../steps/Power.jsx'
 import Apps from '../steps/Apps.jsx'
 import ExtraNodes from '../steps/ExtraNodes.jsx'
+import Capacity from '../steps/Capacity.jsx'
+import Maintenance from '../steps/Maintenance.jsx'
+import Logs from '../steps/Logs.jsx'
+import Projects from '../steps/Projects.jsx'
 
 /* key, label, component, group, done(spec) */
 const STEPS = [
@@ -42,6 +46,10 @@ const STEPS = [
   ['review', 'Review & deploy', Review, 'Deploy', s => ['installed', 'deploying'].includes(s.status)],
   ['operate', 'Operate / Day 2', Operate, 'Operate', null],
   ['health', 'Health', Health, 'Operate', null],
+  ['capacity', 'Capacity', Capacity, 'Operate', null],
+  ['maintenance', 'Node maintenance', Maintenance, 'Operate', null],
+  ['logs', 'Logs & events', Logs, 'Operate', null],
+  ['projects', 'Projects & access', Projects, 'Operate', null],
   ['upgrade', 'Upgrade', Upgrade, 'Operate', null],
   ['scale', 'Scaling', Scale, 'Operate', null],
   ['identity', 'Identity providers', Identity, 'Operate', s => !!(s.day2?.identity?.htpasswd_enabled || s.day2?.identity?.ldap?.enabled || s.day2?.identity?.oidc?.enabled)],
@@ -56,7 +64,7 @@ const STEPS = [
 
 const TOPOLOGY = { standard: 'Standard', compact: 'Compact 3-node', sno: 'Single node' }
 // pages that work on a connected (imported) cluster; the server enforces the same list
-const IMPORTED_STEPS = ['health', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps', 'extranodes']
+const IMPORTED_STEPS = ['health', 'capacity', 'maintenance', 'logs', 'projects', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps', 'extranodes']
 
 export default function Cluster() {
   const { name } = useParams()

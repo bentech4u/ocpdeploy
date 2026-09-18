@@ -246,3 +246,11 @@ pre.pem { background: var(--panel); border: 1px solid var(--border); border-radi
 .readonly-scope button.primary, .readonly-scope button.danger { opacity: .45; pointer-events: none; }
 .tag.info { background: var(--info-soft); border-color: transparent; color: var(--info); }
 @media (max-width: 640px) { .user-menu .chip.user { display: none; } }
+
+/* ---------- meters ---------- */
+.meter { position: relative; height: 8px; border-radius: 999px; background: var(--bg-soft); border: 1px solid var(--border); overflow: hidden; min-width: 80px; }
+.meter > span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+.meter > span.req { opacity: .35; }
+.meter-cell { display: grid; gap: 3px; font-size: 12px; }
+pre.podlog { background: var(--log-bg); color: var(--log-text); padding: 12px 14px; border-radius: var(--radius-sm); font-family: var(--mono); font-size: 11.5px; line-height: 1.45; max-height: 560px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin: 0; }
+pre.podlog mark { background: #f5c451; color: #111; }

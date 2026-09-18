@@ -60,6 +60,20 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 * **Operate pages**
   * *Health* – operators, nodes and conditions, machine config pools, pending CSRs (approve), alerts
     from Alertmanager, warning events, etcd, kubelet signer expiry.
+  * *Capacity* – CPU and memory requests versus usage per node and namespace, pods per node, node
+    root-disk and volume usage (queried from the cluster's Prometheus), with warnings at 85% / 95%
+    (disks 80% / 90%) and when cluster-wide requests pass 80%.
+  * *Node maintenance* – cordon, uncordon, drain (respecting PodDisruptionBudgets; optional force),
+    reboot (drain, restart, wait for a new boot ID and Ready, uncordon; masters one at a time) and
+    remove (drain, then delete the Machine so the VM goes away, power off through the agent
+    provider, or delete the node object and tell you to power it off). A server-side drain dry run
+    names the blocking pods before anything is evicted; masters cannot be removed.
+  * *Logs & events* – pod logs with container, previous-container and line filter; warning-event
+    search across namespaces; `oc adm must-gather` (optionally since a time, extra product images)
+    packed as a tarball, kept on the installer host until deleted.
+  * *Projects & access* – create projects with a ResourceQuota, default container requests/limits
+    (LimitRange) and admin/edit/view access for users or groups from your identity providers; edit
+    quota and access later; system projects are protected.
   * *Upgrade* – channels and available updates from the CVO, admin-gate acknowledgement, upgrade job
     that follows progress to completion (explicit release image on disconnected clusters).
   * *Scaling* – MachineSets and Machines; scale up with static IPs (the app binds the new IP claims),
@@ -94,8 +108,9 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   hostnames must not clash with existing nodes; missing or stale forward/reverse records are warnings.
 * **Connected clusters** – manage an existing OpenShift 4 cluster this console did not install, by
   kubeconfig, username and password (OAuth login) or API token. You accept the API (and OAuth)
-  certificate by fingerprint first, with a show/hide certificate viewer. Health, upgrades, scaling,
-  identity, certificates, storage, operators, apps and backups work on it; an optional read-only
+  certificate by fingerprint first, with a show/hide certificate viewer. Health, capacity, node
+  maintenance, logs and must-gather, projects, upgrades, scaling, identity, certificates, storage,
+  operators, apps and backups work on it; an optional read-only
   mode refuses every change. Nothing about a connected cluster is written to disk (see Security).
 * **Console login** – the first visit asks for an administrator account with a strong password;
   accounts are managed with `ocpdeployctl user set|reset|delete|list`.
@@ -161,7 +176,8 @@ ocpdeployctl user set admin
   you paste yourself are left alone). Uploaded kubeconfigs may only carry inline tokens or client
   certificates: exec plugins, auth providers and file references are refused because they would
   run programs or read files on the installer host. Connected clusters cannot be cloned or saved as
-  templates. The one exception is **Add Extra nodes**: the node ISO (about 1.4 GB, containing the
+  templates. The exceptions are files you explicitly create: must-gather archives and, from
+  **Add Extra nodes**, the node ISO (about 1.4 GB, containing the
   cluster's join details) is written to `work/<cluster>-<timestamp>/` (mode 700, file mode 600) and
   kept until you press **Delete ISO**, so it can still be downloaded after the connection ends. The
   pull secret used to build it stays in memory. Temporary `openshift-node-joiner-*` namespaces the
@@ -189,7 +205,7 @@ clusters/<name>/       per-cluster state (git-ignored)
 bin/<version>/         openshift-install, oc (git-ignored)
 templates/             cluster templates saved from the UI (git-ignored)
 users.json             console accounts, bcrypt hashes (git-ignored)
-work/                  node ISOs from Add Extra nodes, kept until deleted (git-ignored)
+work/                  node ISOs and must-gather archives, kept until deleted (git-ignored)
 ocpdeployctl           command line: accounts, backups (linked to /usr/local/bin by install.sh)
 install.sh             installer for a new host
 ocpdeploy.service      systemd unit

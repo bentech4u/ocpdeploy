@@ -54,11 +54,16 @@ def list_builds(cluster: Optional[str] = None) -> List[Dict]:
             meta = {}
         if cluster and meta.get("cluster") != cluster:
             continue
-        iso = next(d.glob("*.iso"), None)
-        out.append({"id": d.name, "cluster": meta.get("cluster", ""), "server": meta.get("server", ""), "created": meta.get("created", ""),
-                    "hosts": meta.get("hosts", []), "status": meta.get("status", "unknown"),
-                    "iso": iso.name if iso else "", "size_mb": round(iso.stat().st_size / 2**20) if iso else 0})
+        art = _artifact(d)
+        out.append({"id": d.name, "kind": meta.get("kind", "iso"), "cluster": meta.get("cluster", ""), "server": meta.get("server", ""),
+                    "created": meta.get("created", ""), "hosts": meta.get("hosts", []), "status": meta.get("status", "unknown"),
+                    "iso": art.name if art and art.suffix == ".iso" else "", "file": art.name if art else "",
+                    "size_mb": round(art.stat().st_size / 2**20) if art else 0, "note": meta.get("note", "")})
     return out
+
+
+def _artifact(d: Path) -> Optional[Path]:
+    return next(d.glob("*.iso"), None) or next(d.glob("*.tar.gz"), None)
 
 
 def delete_build(build_id: str) -> bool:
@@ -70,10 +75,11 @@ def delete_build(build_id: str) -> bool:
 
 
 def iso_path(build_id: str) -> Path:
-    iso = next(build_dir(build_id).glob("*.iso"), None)
-    if not iso:
+    """The kept file of a build: a node ISO or a must-gather archive."""
+    art = _artifact(build_dir(build_id))
+    if not art:
         raise FileNotFoundError(build_id)
-    return iso
+    return art
 
 
 # ---------------------------------------------------------------- host input
@@ -185,18 +191,18 @@ def _registry_files(store: ClusterStore, spec: ClusterSpec, log) -> List[str]:
     return args
 
 
-def _joiner_namespaces(store: ClusterStore, spec: ClusterSpec) -> set:
+def _joiner_namespaces(store: ClusterStore, spec: ClusterSpec, prefix: str = "openshift-node-joiner-") -> set:
     try:
         out = kube.oc(store, spec, ["get", "namespaces", "-o", "name"], timeout=60)
     except Exception:
         return set()
-    return {l.split("/", 1)[1] for l in out.split() if l.startswith("namespace/openshift-node-joiner-")}
+    return {l.split("/", 1)[1] for l in out.split() if l.startswith("namespace/" + prefix)}
 
 
-def _cleanup_joiner(store: ClusterStore, spec: ClusterSpec, before: set, log):
+def _cleanup_joiner(store: ClusterStore, spec: ClusterSpec, before: set, log, prefix: str = "openshift-node-joiner-"):
     """oc removes its temporary namespace on success, but not when it is stopped or times
     out. Delete only the namespaces that appeared while this job ran."""
-    for ns in sorted(_joiner_namespaces(store, spec) - before):
+    for ns in sorted(_joiner_namespaces(store, spec, prefix) - before):
         try:
             kube.oc(store, spec, ["delete", "namespace", ns, "--wait=false"], timeout=60)
             log(f"removed temporary namespace {ns}")
