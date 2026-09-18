@@ -11,10 +11,12 @@ export default function Clusters() {
   const [form, setForm] = useState({ name: '', base_domain: '', install_method: 'ipi' })
   const [tpl, setTpl] = useState({ source: '', name: '', base_domain: '', first_ip: '', machine_cidr: '', gateway: '', yaml: '' })
   const [templates, setTemplates] = useState([])
+  const [isos, setIsos] = useState([])
   const [err, setErr] = useState('')
   const nav = useNavigate()
 
-  const load = () => { api.get('/api/clusters').then(setList).catch(e => setErr(e.message)); api.get('/api/templates').then(setTemplates).catch(() => {}) }
+  const load = () => { api.get('/api/clusters').then(setList).catch(e => setErr(e.message)); api.get('/api/templates').then(setTemplates).catch(() => {}); api.get('/api/extra-isos').then(setIsos).catch(() => {}) }
+  const delIso = async (id) => { if (!confirm(`Delete ISO ${id}?`)) return; try { await api.del(`/api/extra-isos/${id}`); load() } catch (e) { setErr(e.message) } }
   useEffect(() => { load(); api.get('/api/system').then(setSys).catch(() => {}) }, [])
   const fromTemplate = async () => {
     setErr('')
@@ -102,6 +104,16 @@ export default function Clusters() {
         <p className="lead" style={{ marginTop: 6 }}>Manage an OpenShift 4 cluster this console did not install: health, upgrades, scaling, identity, certificates, storage, operators, apps and backups. Session only — nothing about it is stored.</p>
         {showConnect && <Connect onConnected={r => { setShowConnect(false); nav(`/clusters/${r.name}/health`) }} />}
       </div>
+      {isos.length > 0 && (
+        <div className="panel">
+          <h2>Node ISOs</h2>
+          <p className="lead">Built on the Add Extra nodes page of connected clusters. They stay here after the connection ends, until you delete them.</p>
+          <table className="tbl"><thead><tr><th>Cluster</th><th>Built</th><th>Hosts</th><th>Size</th><th></th></tr></thead>
+            <tbody>{isos.map(b => <tr key={b.id}><td>{b.cluster}<div className="help mono">{b.server}</div></td><td className="help">{b.created.replace('T', ' ').slice(0, 16)}</td>
+              <td className="mono">{b.hosts.map(h => h.hostname).join(', ')}</td><td>{b.size_mb ? `${b.size_mb} MB` : b.status}</td>
+              <td className="row end">{b.iso && <a className="btn small" href={`/api/extra-isos/${b.id}/download`}>Download</a>}<button className="small danger" onClick={() => delIso(b.id)}>Delete ISO</button></td></tr>)}</tbody></table>
+        </div>
+      )}
       <div className="panel">
         <h2>New cluster</h2>
         <p className="lead">Pick a name and base domain, choose how the cluster is installed, then walk through the wizard.</p>

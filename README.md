@@ -81,6 +81,12 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 * **Cluster templates** – export any cluster as YAML (runtime state, MACs and BMC details stripped;
   secrets optional), keep a template library on the installer host, and create the next cluster
   from a template or by cloning an existing one with a new name, domain and node IP range.
+* **Add Extra nodes** (connected clusters, OpenShift 4.17+) – add bare-metal or other machines with
+  `oc adm node-image`: describe hosts with static IPs (or paste NMState / a full `nodes-config.yaml`),
+  build one node ISO for all of them, download it and boot the machines, watch validations and
+  progress with `oc adm node-image monitor`, approve each node's certificate requests with a button
+  (only requests from the listed hosts are shown), and add role labels. Uses the cluster's own pull
+  secret and mirror CA, so it works for connected and disconnected clusters alike.
 * **Connected clusters** – manage an existing OpenShift 4 cluster this console did not install, by
   kubeconfig, username and password (OAuth login) or API token. You accept the API (and OAuth)
   certificate by fingerprint first, with a show/hide certificate viewer. Health, upgrades, scaling,
@@ -150,7 +156,11 @@ ocpdeployctl user set admin
   you paste yourself are left alone). Uploaded kubeconfigs may only carry inline tokens or client
   certificates: exec plugins, auth providers and file references are refused because they would
   run programs or read files on the installer host. Connected clusters cannot be cloned or saved as
-  templates.
+  templates. The one exception is **Add Extra nodes**: the node ISO (about 1.4 GB, containing the
+  cluster's join details) is written to `work/<cluster>-<timestamp>/` (mode 700, file mode 600) and
+  kept until you press **Delete ISO**, so it can still be downloaded after the connection ends. The
+  pull secret used to build it stays in memory. Temporary `openshift-node-joiner-*` namespaces the
+  build or monitor leave behind when stopped are removed by the job.
 * **Certificate pinning.** The API (and OAuth) certificate you accept is checked again when the
   connection is made; a different certificate is refused.
 * **ISO downloads** for Redfish virtual media use a per-cluster secret URL
@@ -174,6 +184,7 @@ clusters/<name>/       per-cluster state (git-ignored)
 bin/<version>/         openshift-install, oc (git-ignored)
 templates/             cluster templates saved from the UI (git-ignored)
 users.json             console accounts, bcrypt hashes (git-ignored)
+work/                  node ISOs from Add Extra nodes, kept until deleted (git-ignored)
 ocpdeployctl           command line: accounts, backups (linked to /usr/local/bin by install.sh)
 install.sh             installer for a new host
 ocpdeploy.service      systemd unit

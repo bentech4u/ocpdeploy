@@ -19,6 +19,7 @@ from .store import ClusterStore
 _subscribers: Dict[int, List[queue.Queue]] = {}
 _running: Dict[str, int] = {}   # cluster -> job id
 _units: Dict[int, str] = {}   # job id -> transient unit currently running
+_cancel_requested: set = set()  # job ids the user cancelled
 _lock = threading.Lock()
 
 
@@ -84,7 +85,7 @@ class JobContext:
             code = self.follow_unit(unit, logfile)
         finally:
             _units.pop(self.job_id, None)
-        if self.cancelled:
+        if self.cancelled or self.job_id in _cancel_requested:
             raise JobCancelled()
         if check and code != 0:
             raise RuntimeError(f"command failed with exit code {code}: {cmd[0]}")
@@ -180,6 +181,7 @@ def start(store: ClusterStore, kind: str, fn: Callable[[JobContext], None], meta
                           (status, datetime.utcnow().isoformat(timespec="seconds"), code, job_id))
             with _lock:
                 _running.pop(store.name, None)
+                _cancel_requested.discard(job_id)
             for q in list(_subscribers.get(job_id, [])):
                 q.put({"done": True, "status": status})
             _subscribers.pop(job_id, None)
@@ -220,6 +222,7 @@ def run_sync(store: ClusterStore, kind: str, fn: Callable[[JobContext], None], l
 
 def cancel(store: ClusterStore, job_id: int) -> bool:
     if store.name in _running and _running[store.name] == job_id:
+        _cancel_requested.add(job_id)
         unit = _units.get(job_id)
         if unit:
             subprocess.run(["systemctl", "stop", unit], capture_output=True)

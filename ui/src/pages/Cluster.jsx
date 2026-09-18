@@ -24,6 +24,7 @@ import Operators from '../steps/Operators.jsx'
 import Backup from '../steps/Backup.jsx'
 import Power from '../steps/Power.jsx'
 import Apps from '../steps/Apps.jsx'
+import ExtraNodes from '../steps/ExtraNodes.jsx'
 
 /* key, label, component, group, done(spec) */
 const STEPS = [
@@ -50,11 +51,12 @@ const STEPS = [
   ['backup', 'etcd backup', Backup, 'Operate', s => !!s.day2?.backup?.schedule],
   ['power', 'Power', Power, 'Operate', null],
   ['apps', 'Applications', Apps, 'Operate', null],
+  ['extranodes', 'Add Extra nodes', ExtraNodes, 'Operate', null],
 ]
 
 const TOPOLOGY = { standard: 'Standard', compact: 'Compact 3-node', sno: 'Single node' }
 // pages that work on a connected (imported) cluster; the server enforces the same list
-const IMPORTED_STEPS = ['health', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps']
+const IMPORTED_STEPS = ['health', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps', 'extranodes']
 
 export default function Cluster() {
   const { name } = useParams()
@@ -82,7 +84,7 @@ export default function Cluster() {
 
   if (!spec) return <div className="page"><Alert kind="error">{err}</Alert><p className="muted">Loading…</p></div>
   const cur = loc.pathname.split('/').pop()
-  const steps = spec.imported ? STEPS.filter(s => IMPORTED_STEPS.includes(s[0]) && (s[0] !== 'scale' || spec.install_method === 'ipi')) : STEPS
+  const steps = spec.imported ? STEPS.filter(s => IMPORTED_STEPS.includes(s[0]) && (s[0] !== 'scale' || spec.install_method === 'ipi')) : STEPS.filter(s => s[0] !== 'extranodes')
   const idx = steps.findIndex(s => s[0] === cur)
   const props = { spec, update, save, reload, saving, dirty, name,
     next: spec.imported ? null : (idx >= 0 && idx < steps.length - 1 ? steps[idx + 1][0] : null),

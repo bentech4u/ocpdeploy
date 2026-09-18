@@ -10,3 +10,4 @@ backend/ocpdeploy/static/
 templates/
 users.json
 users.tmp
+work/

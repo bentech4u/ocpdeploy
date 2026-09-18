@@ -1,5 +1,6 @@
 """Day-2 operations: bootstrap removal, infra and pool nodes, ingress relocation."""
 import json
+import os
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -246,7 +247,15 @@ def _add_nodes_agent(ctx, store, spec, targets: List[NodeSpec]):
         f.unlink()
     (d / "nodes-config.yaml").write_text(render.to_yaml(render.nodes_config(spec, targets)))
     ctx.log("Creating node ISO with oc adm node-image create")
-    ctx.run([kube.oc_bin(spec), "adm", "node-image", "create", "--dir", str(d)], env={"KUBECONFIG": kube.kubeconfig(store)})
+    # registry credentials for the release payload: the cluster's pull secret, in RAM only
+    import tempfile
+    fd, auth = tempfile.mkstemp(prefix="ocpdeploy-auth-", suffix=".json", dir="/dev/shm" if os.path.isdir("/dev/shm") else None)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(spec.pull_secret.strip() or "{}")
+        ctx.run([kube.oc_bin(spec), "adm", "node-image", "create", "--dir", str(d), "-a", auth], env={"KUBECONFIG": kube.kubeconfig(store)})
+    finally:
+        os.unlink(auth)
     iso = next(d.glob("node.*.iso"))
     create_node_vms(ctx, spec, targets, iso)
     ctx.log("Monitoring node join; CSRs are approved automatically")
