@@ -16,10 +16,16 @@ OIDC_SECRET = "ocpdeploy-oidc-client"
 OIDC_CA = "ocpdeploy-oidc-ca"
 
 
+def _htpasswd_bcrypt(h: str) -> str:
+    """OpenShift's htpasswd provider only recognises the $2y$ bcrypt prefix (what htpasswd -B
+    writes); Python's bcrypt emits $2b$. The algorithm is identical, only the tag differs."""
+    return "$2y$" + h[4:] if h[:4] in ("$2a$", "$2b$") else h
+
+
 def _hash(password: str) -> str:
     try:
         import bcrypt
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10)).decode()
+        return _htpasswd_bcrypt(bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=10)).decode())
     except ImportError:
         return "{SHA}" + base64.b64encode(hashlib.sha1(password.encode()).digest()).decode()
 
@@ -46,7 +52,7 @@ def htpasswd_file(store, spec) -> str:
         if u.password:
             lines.append(f"{u.username}:{_hash(u.password)}")
         elif u.username in old:
-            lines.append(f"{u.username}:{old[u.username]}")
+            lines.append(f"{u.username}:{_htpasswd_bcrypt(old[u.username])}")
         else:
             raise RuntimeError(f"user {u.username} has no password and no stored hash")
     return "\n".join(lines) + "\n"
