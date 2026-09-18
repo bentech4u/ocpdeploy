@@ -53,6 +53,8 @@ const STEPS = [
 ]
 
 const TOPOLOGY = { standard: 'Standard', compact: 'Compact 3-node', sno: 'Single node' }
+// pages that work on a connected (imported) cluster; the server enforces the same list
+const IMPORTED_STEPS = ['health', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps']
 
 export default function Cluster() {
   const { name } = useParams()
@@ -80,10 +82,11 @@ export default function Cluster() {
 
   if (!spec) return <div className="page"><Alert kind="error">{err}</Alert><p className="muted">Loading…</p></div>
   const cur = loc.pathname.split('/').pop()
-  const idx = STEPS.findIndex(s => s[0] === cur)
+  const steps = spec.imported ? STEPS.filter(s => IMPORTED_STEPS.includes(s[0]) && (s[0] !== 'scale' || spec.install_method === 'ipi')) : STEPS
+  const idx = steps.findIndex(s => s[0] === cur)
   const props = { spec, update, save, reload, saving, dirty, name,
-    next: idx >= 0 && idx < STEPS.length - 1 ? STEPS[idx + 1][0] : null,
-    prev: idx > 0 ? STEPS[idx - 1][0] : null }
+    next: spec.imported ? null : (idx >= 0 && idx < steps.length - 1 ? steps[idx + 1][0] : null),
+    prev: spec.imported ? null : (idx > 0 ? steps[idx - 1][0] : null) }
   const statusBadge = spec.status === 'installed' ? 'pass' : spec.status === 'failed' ? 'fail' : spec.status === 'deploying' ? 'running' : 'grey'
 
   let lastGroup = null
@@ -91,10 +94,10 @@ export default function Cluster() {
     <div className="page split">
       <nav className="sidenav" aria-label="wizard steps">
         <div className="head">
-          <b title={`${spec.name}.${spec.base_domain}`}>{spec.name}.{spec.base_domain}</b>
-          <span className="status-line">{spec.install_method.toUpperCase()} · {spec.ocp_version || 'no version'} · {spec.status}</span>
+          <b title={spec.cluster_domain || `${spec.name}.${spec.base_domain}`}>{spec.cluster_domain || `${spec.name}.${spec.base_domain}`}</b>
+          <span className="status-line">{spec.imported ? `Connected${spec.read_only ? ' · read-only' : ''} · ${spec.ocp_version}` : `${spec.install_method.toUpperCase()} · ${spec.ocp_version || 'no version'} · ${spec.status}`}</span>
         </div>
-        {STEPS.map(([k, label, , group, done], i) => {
+        {steps.map(([k, label, , group, done], i) => {
           const header = group !== lastGroup ? <div className="group" key={`g-${group}`}>{group}</div> : null
           lastGroup = group
           const isDone = done ? done(spec) : false
@@ -110,21 +113,27 @@ export default function Cluster() {
       </nav>
       <div>
         <div className="cluster-head">
-          <h1>{spec.name}<span className="muted">.{spec.base_domain}</span></h1>
+          <h1>{spec.name}<span className="muted">{spec.cluster_domain ? ` · ${spec.cluster_domain}` : `.${spec.base_domain}`}</span></h1>
           <div className="tags">
             <Badge s={statusBadge} />
-            <span className="tag">{spec.install_method === 'ipi' ? 'IPI' : 'Agent'}</span>
+            {spec.imported && <span className="tag info">Connected</span>}
+            {spec.read_only && <span className="tag">Read-only</span>}
+            {!spec.imported && <span className="tag">{spec.install_method === 'ipi' ? 'IPI' : 'Agent'}</span>}
+            {spec.imported && spec.platform && <span className="tag">{spec.platform}</span>}
             <span className="tag">{TOPOLOGY[spec.topology] || spec.topology}</span>
             {spec.ocp_version && <span className="tag accent">{spec.ocp_version}</span>}
             {spec.mirror?.enabled && <span className="tag">disconnected</span>}
           </div>
         </div>
         <Alert kind="error">{err}</Alert>
+        {spec.read_only && <Alert kind="info">Read-only connection: you can look at everything, but every change is refused by the server.</Alert>}
         {dirty && <Alert kind="warn">Unsaved changes on this page.</Alert>}
-        <Routes>
-          {STEPS.map(([k, , C]) => <Route key={k} path={k} element={<C {...props} />} />)}
-          <Route path="*" element={<Navigate to="basics" replace />} />
-        </Routes>
+        <div className={spec.read_only ? 'readonly-scope' : ''}>
+          <Routes>
+            {steps.map(([k, , C]) => <Route key={k} path={k} element={<C {...props} />} />)}
+            <Route path="*" element={<Navigate to={spec.imported ? 'health' : 'basics'} replace />} />
+          </Routes>
+        </div>
       </div>
     </div>
   )

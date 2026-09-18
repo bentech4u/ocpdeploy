@@ -34,6 +34,9 @@ class SaveReq(BaseModel):
 
 @router.post("/templates")
 def save_template(body: SaveReq):
+    from .. import imported
+    if body.from_cluster and imported.exists(body.from_cluster):
+        raise HTTPException(422, "connected clusters cannot be saved as templates (nothing about them is stored)")
     try:
         text = body.yaml
         if body.from_cluster:
@@ -74,6 +77,11 @@ class CreateReq(BaseModel):
 
 @router.post("/clusters/import", status_code=201)
 def create_from_template(body: CreateReq):
+    from .. import imported
+    if body.from_cluster and imported.exists(body.from_cluster):
+        raise HTTPException(422, "connected clusters cannot be cloned (nothing about them is stored)")
+    if imported.exists(body.name):
+        raise HTTPException(409, "a connected cluster already uses this name")
     try:
         if body.template:
             raw = yaml.safe_load(templates.read_template(body.template))

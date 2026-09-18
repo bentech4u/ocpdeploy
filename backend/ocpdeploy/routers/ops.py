@@ -12,8 +12,10 @@ from sse_starlette.sse import EventSourceResponse
 from .. import jobs
 from ..services import render, deploy, day2, kube, tools, mirror
 from .clusters import _store
+from ..store import get_store
 
 router = APIRouter(prefix="/api/clusters/{name}", tags=["ops"])
+iso_router = APIRouter(prefix="/api/iso", tags=["iso"])
 
 
 def _start(s, kind, fn, meta=None):
@@ -218,6 +220,21 @@ def iso(name: str, file: str):
         if p.exists():
             return FileResponse(p, filename=file, media_type="application/octet-stream")
     raise HTTPException(404, "ISO not built yet")
+
+
+@iso_router.get("/{name}/{token}/{file}")
+def iso_tokenized(name: str, token: str, file: str):
+    """ISO for Redfish virtual media (BMCs cannot log in); the per-cluster token in the
+    path is the credential."""
+    import hmac
+    try:
+        s = get_store(name)
+    except KeyError:
+        raise HTTPException(404)
+    want = s.kv_get("iso_token")
+    if not want or not hmac.compare_digest(str(want), token):
+        raise HTTPException(404)
+    return iso(name, file)
 
 
 @router.get("/files")

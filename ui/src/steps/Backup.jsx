@@ -20,17 +20,18 @@ export default function Backup(p) {
     <div>
       <div className="panel">
         <div className="row"><h2 style={{ margin: 0 }}>etcd backups</h2><span className="spacer" /><button onClick={reload}>Refresh</button></div>
+        {p.spec.imported && <Alert kind="warn">Connected cluster: backups are kept in memory for this session only. Download them before you disconnect; scheduling is not available.</Alert>}
         <p className="lead">Runs <span className="mono">cluster-backup.sh</span> on a control-plane node over SSH (the cluster's SSH key is this host's key), copies the snapshot and static pod resources here as a tarball, and keeps the last N. A systemd timer on the installer host runs it on a schedule.</p>
         <Alert kind="error">{err}</Alert>
-        <div className="grid3">
+        {!p.spec.imported && <div className="grid3">
           <Field label="Schedule (systemd OnCalendar)" help="Presets or any OnCalendar expression, e.g. Mon..Fri *-*-* 01:30:00"><Select value={PRESETS.some(x => x.value === sched) ? sched : 'custom'} onChange={v => setSchedule(v === 'custom' ? sched : v)} options={[...PRESETS, { value: 'custom', label: 'Custom…' }]} /></Field>
           <Field label="Expression"><Text value={sched} onChange={setSchedule} placeholder="*-*-* 02:00:00" /></Field>
           <Field label="Keep last N backups"><Num value={keepN} onChange={setKeep} /></Field>
-        </div>
+        </div>}
         <div className="toolbar">
           {st?.timer && <span className="help">Timer {st.timer.active ? <Badge s="pass" /> : <Badge s="grey" />} {st.timer.active && st.timer.next ? `next ${st.timer.next}` : ''}{st.timer.last && st.timer.last !== 'n/a' ? ` · last ${st.timer.last}` : ''}</span>}
           <span className="spacer" />
-          <button onClick={save}>Save schedule</button>
+          {!p.spec.imported && <button onClick={save}>Save schedule</button>}
           <button className="primary" onClick={() => run('/backup/run', {}, 'Take an etcd backup now?')}>Back up now</button>
         </div>
         <h3>Backups on this host</h3>

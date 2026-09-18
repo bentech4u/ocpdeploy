@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { Field, Text, Select, Alert, RadioCards } from '../components/Field.jsx'
 import { Badge } from '../components/CheckTable.jsx'
+import Connect from '../components/Connect.jsx'
 
 export default function Clusters() {
   const [list, setList] = useState([])
@@ -26,7 +27,7 @@ export default function Clusters() {
   }
   const delTemplate = async (n) => { if (!confirm(`Delete template ${n}?`)) return; try { await api.del(`/api/templates/${n}`); load() } catch (e) { setErr(e.message) } }
   const sources = [{ value: '', label: 'select…' }, ...templates.map(t => ({ value: `template:${t.name}`, label: `Template: ${t.name} (${t.install_method} ${t.topology}, ${t.nodes} nodes${t.has_secrets ? ', with secrets' : ''})` })),
-    ...list.map(c => ({ value: `cluster:${c.name}`, label: `Clone cluster: ${c.name} (${c.install_method}, ${c.ocp_version || 'no version'})` })), { value: 'yaml', label: 'Paste template YAML' }]
+    ...list.filter(c => !c.imported).map(c => ({ value: `cluster:${c.name}`, label: `Clone cluster: ${c.name} (${c.install_method}, ${c.ocp_version || 'no version'})` })), { value: 'yaml', label: 'Paste template YAML' }]
 
   const create = async () => {
     setErr('')
@@ -40,6 +41,11 @@ export default function Clusters() {
     try { await api.del(`/api/clusters/${n}`); load() } catch (e) { setErr(e.message) }
   }
   const badge = (s) => s === 'installed' ? 'pass' : s === 'failed' ? 'fail' : s === 'deploying' ? 'running' : 'grey'
+  const disconnect = async (n) => {
+    if (!confirm(`Disconnect ${n}? Its credentials are dropped from memory${list.find(c => c.name === n)?.method === 'password' ? ' and the login token is revoked' : ''}.`)) return
+    try { await api.del(`/api/imported/${n}`); load() } catch (e) { setErr(e.message) }
+  }
+  const [showConnect, setShowConnect] = useState(false)
 
   return (
     <div className="page">
@@ -52,10 +58,25 @@ export default function Clusters() {
       <Alert kind="error">{err}</Alert>
       <div className="panel">
         <h2>Your clusters</h2>
-        <p className="lead">{list.length ? `${list.length} cluster profile${list.length > 1 ? 's' : ''}` : 'No clusters yet — create one below.'}</p>
+        <p className="lead">{list.length ? `${list.filter(c => !c.imported).length} cluster profile${list.filter(c => !c.imported).length === 1 ? '' : 's'}${list.some(c => c.imported) ? `, ${list.filter(c => c.imported).length} connected` : ''}` : 'No clusters yet — create one below, or connect to an existing cluster.'}</p>
         {list.length > 0 && (
           <div className="cards">
-            {list.map(c => (
+            {list.map(c => c.imported ? (
+              <div className="card stripe imported" key={c.name}>
+                <h3><Link to={`/clusters/${c.name}/health`}>{c.name}</Link> <span className="tag info">Connected</span>{c.read_only && <span className="tag">Read-only</span>}</h3>
+                <dl className="kv">
+                  <dt>API</dt><dd className="mono">{c.server}</dd>
+                  <dt>Signed in as</dt><dd>{c.user} <span className="help">({{ kubeconfig: 'kubeconfig', password: 'password login', token: 'token' }[c.method]})</span></dd>
+                  <dt>Version</dt><dd>{c.ocp_version}{c.platform ? ` · ${c.platform}` : ''}</dd>
+                  {c.expires && <><dt>Expires</dt><dd>{new Date(c.expires * 1000).toLocaleString()}</dd></>}
+                </dl>
+                <div className="row end" style={{ marginTop: 6 }}>
+                  <button className="small" onClick={() => disconnect(c.name)}>Disconnect</button>
+                  <span className="spacer" />
+                  <Link className="btn primary" to={`/clusters/${c.name}/health`}>Open</Link>
+                </div>
+              </div>
+            ) : (
               <div className={`card stripe ${c.status}`} key={c.name}>
                 <h3><Link to={`/clusters/${c.name}/basics`}>{c.name}</Link> <Badge s={badge(c.status)} /></h3>
                 <dl className="kv">
@@ -74,6 +95,12 @@ export default function Clusters() {
             ))}
           </div>
         )}
+      </div>
+      <div className="panel">
+        <div className="row"><h2 style={{ margin: 0 }}>Connect to an existing cluster</h2><span className="spacer" />
+          <button onClick={() => setShowConnect(!showConnect)}>{showConnect ? 'Close' : 'Connect…'}</button></div>
+        <p className="lead" style={{ marginTop: 6 }}>Manage an OpenShift 4 cluster this console did not install: health, upgrades, scaling, identity, certificates, storage, operators, apps and backups. Session only — nothing about it is stored.</p>
+        {showConnect && <Connect onConnected={r => { setShowConnect(false); nav(`/clusters/${r.name}/health`) }} />}
       </div>
       <div className="panel">
         <h2>New cluster</h2>

@@ -3,7 +3,7 @@ version into bin/<version>/."""
 import hashlib
 import tarfile
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import httpx
 
@@ -35,6 +35,31 @@ def status(version: str) -> Dict:
         "kubectl": (d / "kubectl").exists(),
         "oc-mirror": (d / "oc-mirror").exists(),
     }
+
+
+def _vkey(v: str):
+    try:
+        return tuple(int(x) for x in v.split("-")[0].split("."))
+    except ValueError:
+        return (0,)
+
+
+def any_oc() -> Optional[Path]:
+    """The newest oc binary available in bin/, or None."""
+    found = [p for p in BIN_DIR.iterdir() if (p / "oc").exists()] if BIN_DIR.exists() else []
+    found.sort(key=lambda p: _vkey(p.name))
+    return (found[-1] / "oc") if found else None
+
+
+def ensure_oc(version: str, log=print) -> Path:
+    """Only the client tarball for a version (connected clusters need oc, not the installer)."""
+    d = tool_dir(version)
+    d.mkdir(parents=True, exist_ok=True)
+    if (d / "oc").exists():
+        return d / "oc"
+    sums = _checksums(version, log)
+    _fetch_verified(version, FILES["oc"], d, sums, log, ["oc", "kubectl"])
+    return d / "oc"
 
 
 def installed_versions():

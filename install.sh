@@ -24,6 +24,9 @@ echo "== frontend build"
 echo "== ssh key for the installer host (used for nodes and HAProxy VMs)"
 [ -f /root/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C "root@$(hostname -f)" >/dev/null
 
+echo "== command line"
+ln -sf "$ROOT/ocpdeployctl" /usr/local/bin/ocpdeployctl
+
 echo "== systemd service on port $PORT"
 mkdir -p "$ROOT/clusters" "$ROOT/bin"
 sed -e "s#/opt/ocpdeploy#$ROOT#g" -e "s#OCPDEPLOY_PORT=8080#OCPDEPLOY_PORT=$PORT#" "$ROOT/ocpdeploy.service" > /etc/systemd/system/ocpdeploy.service
@@ -36,3 +39,8 @@ sleep 2
 systemctl --no-pager --lines=0 status ocpdeploy | head -3
 echo
 echo "ocpdeploy is running: http://$(hostname -f):$PORT/"
+if [ -z "$(OCPDEPLOY_ROOT="$ROOT" "$ROOT/ocpdeployctl" user list 2>/dev/null)" ]; then
+  echo "No console account yet. Create one now (recommended, so nobody else on the network can):"
+  echo "  ocpdeployctl user set admin"
+  echo "or open the web UI, which asks for it on the first visit."
+fi

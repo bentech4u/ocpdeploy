@@ -16,6 +16,11 @@ def kubeconfig(store: ClusterStore) -> str:
 def env(store: ClusterStore) -> dict:
     e = dict(os.environ)
     e["KUBECONFIG"] = kubeconfig(store)
+    from ..settings import IMPORTED_DIR
+    if store.dir.parent == IMPORTED_DIR:
+        # connected cluster: oc's discovery/HTTP cache goes to its RAM directory, not ~/.kube
+        e["HOME"] = str(store.dir)
+        e["KUBECACHEDIR"] = str(store.dir / ".kube" / "cache")
     trust = store.dir / "ca-trust.pem"
     if trust.exists():
         # system CAs + vCenter / mirror registry CAs written by deploy.trust_env
@@ -26,6 +31,11 @@ def env(store: ClusterStore) -> dict:
 def oc_bin(spec: ClusterSpec) -> str:
     p = tools.tool_path(spec.ocp_version, "oc")
     if not p.exists():
+        if spec.imported:
+            # connected clusters may run a version whose client could not be downloaded
+            alt = tools.any_oc()
+            if alt:
+                return str(alt)
         raise RuntimeError(f"oc for {spec.ocp_version} not downloaded")
     return str(p)
 

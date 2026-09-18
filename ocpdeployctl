@@ -1,0 +1,6 @@
+#!/bin/bash
+# ocpdeploy command line: console accounts and maintenance. See: ocpdeployctl --help
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+export PYTHONPATH="$ROOT/backend"
+export OCPDEPLOY_ROOT="${OCPDEPLOY_ROOT:-$ROOT}"
+exec "$ROOT/.venv/bin/python" -m ocpdeploy.cli "$@"

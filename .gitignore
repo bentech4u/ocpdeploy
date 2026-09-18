@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 backend/ocpdeploy/static/
 templates/
+users.json
+users.tmp

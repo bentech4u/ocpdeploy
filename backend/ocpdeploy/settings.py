@@ -5,6 +5,9 @@ ROOT = Path(os.environ.get("OCPDEPLOY_ROOT", "/opt/ocpdeploy")).resolve()
 CLUSTERS_DIR = ROOT / "clusters"
 BIN_DIR = ROOT / "bin"
 SECRET_KEY_FILE = Path(os.environ.get("OCPDEPLOY_SECRET_KEY_FILE", ROOT / ".secret_key"))
+USERS_FILE = Path(os.environ.get("OCPDEPLOY_USERS_FILE", ROOT / "users.json"))
+# imported (connected) clusters live only in RAM: a tmpfs directory wiped at every start
+IMPORTED_DIR = Path(os.environ.get("OCPDEPLOY_IMPORTED_DIR", "/dev/shm/ocpdeploy-imported"))
 STATIC_DIR = Path(os.environ.get("OCPDEPLOY_STATIC_DIR", Path(__file__).parent / "static"))
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 LISTEN_HOST = os.environ.get("OCPDEPLOY_HOST", "0.0.0.0")

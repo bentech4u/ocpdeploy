@@ -72,9 +72,9 @@ def _walk_secret(d: Dict[str, Any], fn):
 
 
 class ClusterStore:
-    def __init__(self, name: str):
+    def __init__(self, name: str, base_dir: Optional[Path] = None):
         self.name = name
-        self.dir: Path = CLUSTERS_DIR / name
+        self.dir: Path = (base_dir or CLUSTERS_DIR) / name
         self.spec_file = self.dir / "cluster.json"
         self.db_file = self.dir / "state.sqlite"
         self.install_dir = self.dir / "install"
@@ -88,6 +88,9 @@ class ClusterStore:
         with _lock:
             if self.exists():
                 raise FileExistsError(self.name)
+            from . import imported
+            if self.dir.parent == CLUSTERS_DIR and imported.exists(self.name):
+                raise FileExistsError(self.name)   # a connected cluster already uses this name
             for d in (self.dir, self.install_dir, self.logs_dir):
                 d.mkdir(parents=True, exist_ok=True)
             self._init_db()
@@ -225,7 +228,9 @@ def list_clusters() -> List[Dict[str, Any]]:
 
 
 def get_store(name: str) -> ClusterStore:
-    s = ClusterStore(name)
+    from . import imported
+    d = imported.base_dir(name)
+    s = ClusterStore(name, d) if d else ClusterStore(name)
     if not s.exists():
         raise KeyError(name)
     return s

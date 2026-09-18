@@ -74,7 +74,7 @@ export default function Identity(p) {
             <Field label="Provider name"><Text value={id.oidc.name} onChange={v => setO('name', v)} /></Field>
             <Field label="Issuer URL" help="Must serve /.well-known/openid-configuration"><Text value={id.oidc.issuer} onChange={v => setO('issuer', v)} placeholder="https://keycloak.example.com/realms/lab" /></Field>
             <Field label="Client ID"><Text value={id.oidc.client_id} onChange={v => setO('client_id', v)} /></Field>
-            <Field label="Client secret" help={id.oidc.client_secret === MASK ? 'Stored. Type to replace.' : `Redirect URI: https://oauth-openshift.apps.${spec.name}.${spec.base_domain}/oauth2callback/${id.oidc.name || 'oidc'}`}><Text type="password" value={id.oidc.client_secret === MASK ? '' : id.oidc.client_secret} onChange={v => setO('client_secret', v)} /></Field>
+            <Field label="Client secret" help={id.oidc.client_secret === MASK ? 'Stored. Type to replace.' : `Redirect URI: https://oauth-openshift.apps.${spec.cluster_domain || `${spec.name}.${spec.base_domain}`}/oauth2callback/${id.oidc.name || 'oidc'}`}><Text type="password" value={id.oidc.client_secret === MASK ? '' : id.oidc.client_secret} onChange={v => setO('client_secret', v)} /></Field>
             <Field label="Preferred username claim"><Text value={id.oidc.claim_preferred_username} onChange={v => setO('claim_preferred_username', v)} /></Field>
             <Field label="Name claim"><Text value={id.oidc.claim_name} onChange={v => setO('claim_name', v)} /></Field>
             <Field label="E-mail claim"><Text value={id.oidc.claim_email} onChange={v => setO('claim_email', v)} /></Field>

@@ -1,5 +1,5 @@
 from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ..models import ClusterSpec
@@ -24,8 +24,9 @@ class NewCluster(BaseModel):
 
 
 @router.get("")
-def list_all():
-    return list_clusters()
+def list_all(request: Request):
+    from .. import imported
+    return list_clusters() + imported.list_for(getattr(request.state, "session_id", ""))
 
 
 @router.post("", status_code=201)

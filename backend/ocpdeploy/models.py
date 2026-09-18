@@ -352,6 +352,10 @@ class ClusterSpec(BaseModel):
     ssh_public_key: str = ""
     fips: bool = False
     status: str = "new"           # new | configured | deploying | installed | failed | destroyed
+    imported: bool = False        # connected cluster (RAM-only session, not installed by this app)
+    read_only: bool = False       # imported with read-only mode (every change is refused)
+    platform: str = ""            # infrastructure platform reported by an imported cluster
+    cluster_domain: str = ""      # imported: the cluster's real <name>.<base> when its console name differs
 
     @field_validator("name")
     @classmethod
@@ -363,7 +367,7 @@ class ClusterSpec(BaseModel):
     # ---- derived helpers -------------------------------------------------
     @property
     def domain(self) -> str:
-        return f"{self.name}.{self.base_domain}"
+        return self.cluster_domain or f"{self.name}.{self.base_domain}"
 
     @property
     def api_ip(self) -> str:

@@ -1,6 +1,7 @@
 async function call(method, path, body) {
   const r = await fetch(path, {
     method,
+    credentials: 'same-origin',
     headers: body !== undefined ? { 'content-type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
@@ -8,6 +9,8 @@ async function call(method, path, body) {
   let data = text
   try { data = text ? JSON.parse(text) : null } catch { /* plain text */ }
   if (!r.ok) {
+    // session ended (logout elsewhere, password change, expiry): send the app back to the login screen
+    if (r.status === 401 && !path.startsWith('/api/auth/') && !path.startsWith('/api/imported/')) window.dispatchEvent(new Event('ocpdeploy:unauthorized'))
     const msg = (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : `${r.status} ${r.statusText}`
     throw new Error(msg)
   }

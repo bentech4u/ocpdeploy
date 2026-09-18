@@ -29,7 +29,17 @@ def iso_url(store, filename: str, target_host: str = "") -> str:
             except Exception:
                 pass
         base = f"http://{ip}:{LISTEN_PORT}"
-    return f"{base}/api/clusters/{store.name}/iso/{filename}"
+    return f"{base}/api/iso/{store.name}/{iso_token(store)}/{filename}"
+
+
+def iso_token(store) -> str:
+    """Per-cluster secret that authorises ISO downloads by BMCs (kept in state.sqlite)."""
+    import secrets
+    t = store.kv_get("iso_token")
+    if not t:
+        t = secrets.token_urlsafe(24)
+        store.kv_set("iso_token", t)
+    return t
 
 
 class Provider:

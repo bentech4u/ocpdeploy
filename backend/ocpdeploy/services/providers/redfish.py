@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import httpx
 
 from ...models import NodeSpec
-from .base import Provider, iso_url
+from .base import Provider, iso_url, iso_token
 
 
 class _BMC:
@@ -157,7 +157,7 @@ class RedfishProvider(Provider):
 
     def upload_iso(self, iso_local: Path, log) -> str:
         r = self.spec.redfish
-        url = (r.iso_url_base.rstrip("/") + f"/api/clusters/{self.store.name}/iso/{iso_local.name}") if r.iso_url_base else iso_url(self.store, iso_local.name, self._targets()[0].bmc_address if self._targets() else "")
+        url = (r.iso_url_base.rstrip("/") + f"/api/iso/{self.store.name}/{iso_token(self.store)}/{iso_local.name}") if r.iso_url_base else iso_url(self.store, iso_local.name, self._targets()[0].bmc_address if self._targets() else "")
         log(f"ISO served at {url} (the BMCs fetch it from this app)")
         return url
 

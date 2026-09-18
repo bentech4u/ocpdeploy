@@ -83,6 +83,13 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
 * **Cluster templates** – export any cluster as YAML (runtime state, MACs and BMC details stripped;
   secrets optional), keep a template library on the installer host, and create the next cluster
   from a template or by cloning an existing one with a new name, domain and node IP range.
+* **Connected clusters** – manage an existing OpenShift 4 cluster this console did not install, by
+  kubeconfig, username and password (OAuth login) or API token. You accept the API (and OAuth)
+  certificate by fingerprint first, with a show/hide certificate viewer. Health, upgrades, scaling,
+  identity, certificates, storage, operators, apps and backups work on it; an optional read-only
+  mode refuses every change. Nothing about a connected cluster is written to disk (see Security).
+* **Console login** – the first visit asks for an administrator account with a strong password;
+  accounts are managed with `ocpdeployctl user set|reset|delete|list`.
 * Secrets (vCenter password, SSH passwords, pull secret) are encrypted at rest.
 
 ## Requirements
@@ -113,8 +120,46 @@ different port. `OCPDEPLOY_STATIC_DIR` points the backend at a different UI buil
 The script installs Python 3.12 and Node 22 from AppStream, creates a venv, builds the frontend,
 generates an SSH key for root if none exists, and enables the `ocpdeploy` systemd service.
 
-> **Security:** there is no authentication. Run it on a trusted LAN or put it behind a reverse proxy
-> with auth. Anyone who can reach the port can deploy and destroy clusters.
+The first visit asks you to create the administrator account. To close that window right after
+installing, create it on the host instead:
+
+```bash
+ocpdeployctl user set admin
+```
+
+## Security
+
+* **Console accounts** live in `users.json` (bcrypt hashes, mode 600). Passwords need at least 12
+  characters, three of lowercase/uppercase/digit/symbol, and must not contain the username.
+  Sessions are HttpOnly, SameSite=Strict cookies held in memory: they end after 4 idle hours,
+  24 hours at most, on sign-out, on a password change, and when the app restarts. Five failed
+  logins from one address lock it out for five minutes.
+* **Account management** on the installer host (works while the app runs; changing or deleting
+  an account signs its sessions out):
+
+  ```bash
+  ocpdeployctl user list
+  ocpdeployctl user set <name>        # create, or set a password
+  ocpdeployctl user reset <name>      # change the password of an existing account
+  ocpdeployctl user delete <name>
+  ```
+
+  Add `--password-stdin` to read the password from standard input.
+* **Connected clusters are RAM only.** The kubeconfig built for the session sits in a mode-700 tmpfs
+  directory (`/dev/shm/ocpdeploy-imported`, wiped at every start), `oc` caches go there too, and the
+  connection is dropped on disconnect, sign-out, session or token expiry, and restart. Passwords are
+  used once for the OAuth login and never kept; that login token is revoked on disconnect (tokens
+  you paste yourself are left alone). Uploaded kubeconfigs may only carry inline tokens or client
+  certificates: exec plugins, auth providers and file references are refused because they would
+  run programs or read files on the installer host. Connected clusters cannot be cloned or saved as
+  templates.
+* **Certificate pinning.** The API (and OAuth) certificate you accept is checked again when the
+  connection is made; a different certificate is refused.
+* **ISO downloads** for Redfish virtual media use a per-cluster secret URL
+  (`/api/iso/<cluster>/<token>/<file>`), since BMCs cannot log in; every other endpoint needs a
+  session.
+* The console speaks plain HTTP. Put it behind a TLS reverse proxy (or keep it on a management
+  network) so passwords and cluster credentials do not cross the network in clear text.
 
 ## Layout
 
@@ -130,6 +175,8 @@ clusters/<name>/       per-cluster state (git-ignored)
   logs/                installer log copies, job outputs
 bin/<version>/         openshift-install, oc (git-ignored)
 templates/             cluster templates saved from the UI (git-ignored)
+users.json             console accounts, bcrypt hashes (git-ignored)
+ocpdeployctl           command line: accounts, backups (linked to /usr/local/bin by install.sh)
 install.sh             installer for a new host
 ocpdeploy.service      systemd unit
 ```

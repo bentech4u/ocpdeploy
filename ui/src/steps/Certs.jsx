@@ -24,7 +24,7 @@ export default function Certs(p) {
   const setA = (k, v) => update(s => s.day2.certs.acme[k] = v)
   const a = cs.acme, c = cs.custom
   const done = () => { reload(); p.reload() }
-  const dom = `${spec.name}.${spec.base_domain}`
+  const dom = spec.cluster_domain || `${spec.name}.${spec.base_domain}`
   return (
     <div>
       <div className="panel">

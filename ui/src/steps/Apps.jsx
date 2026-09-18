@@ -36,7 +36,7 @@ export default function Apps(p) {
     <div>
       <div className="panel">
         <div className="row"><h2 style={{ margin: 0 }}>Applications</h2><span className="spacer" /><button onClick={reload} disabled={busy}>Refresh</button></div>
-        <p className="lead">One-click lab workloads. Each lands in its own namespace with a Route on <span className="mono">*.apps.{spec.name}.{spec.base_domain}</span>; generated passwords are kept in a Secret in that namespace and can be revealed here. Persistent apps need a default storage class (Storage page).</p>
+        <p className="lead">One-click lab workloads. Each lands in its own namespace with a Route on <span className="mono">*.apps.{spec.cluster_domain || `${spec.name}.${spec.base_domain}`}</span>; generated passwords are kept in a Secret in that namespace and can be revealed here. Persistent apps need a default storage class (Storage page).</p>
         <Alert kind="error">{err}</Alert>
         {spec.mirror?.enabled && <Alert kind="warn">Disconnected cluster: the images these apps use (docker.io, quay.io, registry.redhat.io, helm.goharbor.io) must be mirrored first.</Alert>}
         {d && (
