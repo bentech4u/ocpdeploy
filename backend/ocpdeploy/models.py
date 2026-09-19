@@ -335,6 +335,7 @@ class PowerScaleArray(BaseModel):
     access_zone: str = "System"
     isi_path: str = "/ifs/data/csi"
     az_service_ip: str = ""               # SmartConnect name/IP for NFS traffic; empty = endpoint
+    replication_certificate_id: str = ""  # SyncIQ encryption: this array's certificate ID (replicationCertificateID)
 
 
 class PowerScaleClass(BaseModel):

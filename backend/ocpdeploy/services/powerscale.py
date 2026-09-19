@@ -252,7 +252,8 @@ def prefill(store: ClusterStore, spec: ClusterSpec) -> Dict:
                                           skip_cert_validation=str(c.get("skipCertificateValidation", "true")).lower() != "false",
                                           ca_pem=ca if str(c.get("skipCertificateValidation", "true")).lower() == "false" else "",
                                           isi_path=c.get("isiPath") or "/ifs/data/csi",
-                                          access_zone=zone or (cfg.arrays[0].access_zone if cfg.arrays else "System"))
+                                          access_zone=zone or (cfg.arrays[0].access_zone if cfg.arrays else "System"),
+                                          replication_certificate_id=str(c.get("replicationCertificateID") or ""))
                           for c in creds]
         classes = []
         for s in _classes(store, spec):
@@ -326,6 +327,8 @@ def validate(cfg: PowerScaleSpec) -> List[str]:
             errs.append(f"array {a.name}: endpoint and API user are required")
         if not a.isi_path.startswith("/ifs"):
             errs.append(f"array {a.name}: isiPath must start with /ifs")
+        if a.replication_certificate_id and not re.match(r"^[A-Za-z0-9]{8,128}$", a.replication_certificate_id):
+            errs.append(f"array {a.name}: replicationCertificateID is the certificate ID from 'isi sync certificates server list'")
         if not a.skip_cert_validation and "BEGIN CERTIFICATE" not in a.ca_pem:
             errs.append(f"array {a.name}: certificate validation is on, so its CA certificate (PEM) is needed")
     if len(cfg.arrays) > 1 and sum(1 for a in cfg.arrays if a.is_default) != 1:
@@ -418,13 +421,18 @@ def creds_doc(cfg: PowerScaleSpec, passwords: Dict[str, str], existing: List[Dic
     missing = []
     out = []
     for a in cfg.arrays:
-        pw = passwords.get(a.name) or (old.get(a.name) or {}).get("password") or ""
+        prev = old.get(a.name) or {}
+        pw = passwords.get(a.name) or prev.get("password") or ""
         if not pw:
             missing.append(a.name)
-        out.append({"clusterName": a.name, "username": a.username, "password": pw, "endpoint": a.endpoint,
-                    "endpointPort": a.port, "isDefault": a.is_default or len(cfg.arrays) == 1,
-                    "skipCertificateValidation": a.skip_cert_validation, "isiPath": a.isi_path,
-                    "isiVolumePathPermissions": "0777"})
+        entry = dict(prev)                 # keep keys the form does not know about
+        entry.update({"clusterName": a.name, "username": a.username, "password": pw, "endpoint": a.endpoint,
+                      "endpointPort": a.port, "isDefault": a.is_default or len(cfg.arrays) == 1,
+                      "skipCertificateValidation": a.skip_cert_validation, "isiPath": a.isi_path,
+                      "isiVolumePathPermissions": prev.get("isiVolumePathPermissions", "0777")})
+        if a.replication_certificate_id:
+            entry["replicationCertificateID"] = a.replication_certificate_id
+        out.append(entry)
     return {"isilonClusters": out}, missing
 
 

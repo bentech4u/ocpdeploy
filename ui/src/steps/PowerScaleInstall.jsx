@@ -6,7 +6,7 @@ import JobLog from '../components/JobLog.jsx'
 import { jobRunner } from '../components/ops.js'
 
 const blankArray = (first) => ({ name: '', endpoint: '', port: 8080, username: '', is_default: !!first, skip_cert_validation: true, ca_pem: '',
-  access_zone: 'System', isi_path: '/ifs/data/csi', az_service_ip: '' })
+  access_zone: 'System', isi_path: '/ifs/data/csi', az_service_ip: '', replication_certificate_id: '' })
 const blankClass = (arr) => ({ name: 'isilon', array: arr || '', access_zone: 'System', isi_path: '/ifs/data/csi', az_service_ip: '',
   root_client_enabled: false, reclaim_policy: 'Delete', binding_mode: 'Immediate', default: false })
 
@@ -109,6 +109,8 @@ export default function PowerScaleInstall(p) {
             <Field label="Access zone"><Text value={a.access_zone} onChange={v => setA(i, 'access_zone', v)} /></Field>
             <Field label="Base path (isiPath)"><Text value={a.isi_path} onChange={v => setA(i, 'isi_path', v)} /></Field>
             <Field label="NFS address (AzServiceIP)" help="SmartConnect name/IP; blank = endpoint"><Text value={a.az_service_ip} onChange={v => setA(i, 'az_service_ip', v)} /></Field>
+            {cfg.replication.enabled && <Field label="SyncIQ certificate ID" help="replicationCertificateID, for encrypted SyncIQ (isi sync certificates server list)">
+              <Text value={a.replication_certificate_id} onChange={v => setA(i, 'replication_certificate_id', v.trim())} className="mono" /></Field>}
           </div>
           <div className="row" style={{ marginTop: 6 }}>
             {cfg.arrays.length > 1 && <label className="row"><input type="radio" checked={a.is_default} onChange={() => setA(i, 'is_default', true)} /> default array</label>}
