@@ -86,7 +86,8 @@ export default function PowerScaleRepl(p) {
       {editing && <>
         <div className="grid3" style={{ marginTop: 8 }}>
           <Field label="Peer cluster (DR site)" help={peers.length ? '' : 'No other cluster here: connect the DR cluster on the Clusters page, then pick it'}>
-            <div onFocus={reloadPeers} onMouseDown={reloadPeers}><Select value={r.peer} onChange={v => setR('peer', v)} options={peerOpts} /></div></Field>
+            <div onFocus={reloadPeers} onMouseDown={reloadPeers}><Select value={r.peer} onChange={v => setCfg(c => ({ ...c, replication: { ...c.replication, peer: v,
+              remote_cluster_id: v ? (c.replication.remote_cluster_id || v.toLowerCase().replace(/[^a-z0-9-]/g, '-')) : '' } }))} options={peerOpts} /></div></Field>
           <Field label="This cluster's ID" help="Name used in the replication config; lower-case"><Text value={r.local_cluster_id} onChange={v => setR('local_cluster_id', v)} /></Field>
           {r.peer && <Field label="Peer cluster's ID"><Text value={r.remote_cluster_id} onChange={v => setR('remote_cluster_id', v)} placeholder={r.peer.toLowerCase()} /></Field>}
           <Field label="Source array (here)"><Select value={r.source_array} onChange={v => setR('source_array', v)} options={arrays} placeholder="" /></Field>
