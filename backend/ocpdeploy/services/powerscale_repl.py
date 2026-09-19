@@ -415,9 +415,7 @@ def job_setup(ctx: JobContext, store: ClusterStore, spec: ClusterSpec, cfg: Powe
                 ctx.log(f"{s.name}: StorageClass {d['metadata']['name']} " + ("unchanged" if same else f"exists with other settings, left alone ({why})"))
                 continue
             ctx.log(f"{s.name}: " + ops.apply(s.store, s.spec, [d]).strip())
-    spec = store.load()
-    spec.day2.powerscale.replication = r
-    store.save(spec)
+    store.patch(lambda raw: raw.setdefault("day2", {}).setdefault("powerscale", PowerScaleSpec().model_dump()).__setitem__("replication", r.model_dump()))
     ctx.log(f"Replication ready. PVCs created with StorageClass {r.class_name} are replicated to "
             + (f"{peer.name} (class {b['metadata']['name']})" if peer else f"class {b['metadata']['name']} on this cluster")
             + "; each namespace gets a replication group (see the Replication tab).")

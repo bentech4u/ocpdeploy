@@ -791,9 +791,8 @@ def job_install(ctx: JobContext, store: ClusterStore, spec: ClusterSpec, cfg: Po
     else:
         _install_operator(ctx, store, spec, cfg, passwords)
     _apply_classes(ctx, store, spec, cfg)
-    fresh = store.load()               # the spec may have been edited while the job ran
-    fresh.day2.powerscale = cfg
-    store.save(fresh)
+    # patch only this section (the spec may have been edited while the job ran; secrets stay encrypted)
+    store.patch(lambda raw: raw.setdefault("day2", {}).__setitem__("powerscale", cfg.model_dump()))
     st = status(store, spec)
     ctx.log(f"Done: driver {st['install']['driver_version']} in {cfg.namespace}; StorageClasses: " + ", ".join(c["name"] for c in st["classes"]))
 
