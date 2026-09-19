@@ -33,6 +33,7 @@ export default function PowerScaleRepl(p) {
       setEditing(!Object.values(g.controllers || {}).some(x => x.cluster_id))
     } catch (e) { setErr(e.message) }
   }
+  const reloadPeers = async () => { try { setPeers(await api.get(`/api/clusters/${p.name}/powerscale/peers`)) } catch { /* keep the old list */ } }
   const reloadGroups = async () => { try { setData(await api.get(`/api/clusters/${p.name}/powerscale/replication`)) } catch (e) { setErr(e.message) } }
   useEffect(() => { load() }, [p.name])
   useEffect(() => { const t = setInterval(() => { if (!document.hidden) reloadGroups() }, 20000); return () => clearInterval(t) }, [p.name])
@@ -53,7 +54,7 @@ export default function PowerScaleRepl(p) {
     if (!x) return
     const fails = x.rows.filter(y => y.status === 'fail').length
     if (fails) { setErr(`${fails} pre-check(s) failed; fix them first.`); return }
-    return run('/powerscale/replication/setup', body(), `Set up replication ${p.name} → ${r.peer || 'same cluster'} (${r.source_array} → ${r.target_array}, RPO ${r.rpo})? It installs the replication controller where missing, wires the clusters with a service-account identity and creates the replicated StorageClasses.`)
+    return run('/powerscale/replication/setup', body(), `${r.peer ? '' : 'SINGLE-CLUSTER replication (no peer selected)! '}Set up replication ${p.name} → ${r.peer || 'same cluster'} (${r.source_array} → ${r.target_array}, RPO ${r.rpo})? It installs the replication controller where missing, wires the clusters with a service-account identity and creates the replicated StorageClasses.`)
   }
   const actions = data?.actions || {}
   const allowed = (g) => Object.entries(actions).filter(([, a]) => a.on === 'any' || (a.on === 'source') === g.is_source)
@@ -84,7 +85,8 @@ export default function PowerScaleRepl(p) {
       </dl>}
       {editing && <>
         <div className="grid3" style={{ marginTop: 8 }}>
-          <Field label="Peer cluster (DR site)"><Select value={r.peer} onChange={v => setR('peer', v)} options={peerOpts} /></Field>
+          <Field label="Peer cluster (DR site)" help={peers.length ? '' : 'No other cluster here: connect the DR cluster on the Clusters page, then pick it'}>
+            <div onFocus={reloadPeers} onMouseDown={reloadPeers}><Select value={r.peer} onChange={v => setR('peer', v)} options={peerOpts} /></div></Field>
           <Field label="This cluster's ID" help="Name used in the replication config; lower-case"><Text value={r.local_cluster_id} onChange={v => setR('local_cluster_id', v)} /></Field>
           {r.peer && <Field label="Peer cluster's ID"><Text value={r.remote_cluster_id} onChange={v => setR('remote_cluster_id', v)} placeholder={r.peer.toLowerCase()} /></Field>}
           <Field label="Source array (here)"><Select value={r.source_array} onChange={v => setR('source_array', v)} options={arrays} placeholder="" /></Field>
@@ -97,6 +99,7 @@ export default function PowerScaleRepl(p) {
           <Field label="StorageClass on the peer" help={r.peer ? '' : 'Single cluster: becomes <name>-tgt when equal'}><Text value={r.remote_class_name} onChange={v => setR('remote_class_name', v)} /></Field>
           <Field label="Volume group prefix"><Text value={r.volume_group_prefix} onChange={v => setR('volume_group_prefix', v)} /></Field>
         </div>
+        {!r.peer && <Alert kind="warn">No peer cluster selected: this sets up <b>single-cluster</b> replication (both copies used from {p.name}). For DR to another cluster, connect it and pick it as the peer.</Alert>}
         <label className="row help" style={{ marginTop: 6 }}><input type="checkbox" checked={r.ignore_namespaces} onChange={e => setR('ignore_namespaces', e.target.checked)} /> one replication group for all namespaces (ignoreNamespaces)</label>
         <div className="row" style={{ marginTop: 12 }}><span className="spacer" />
           <button onClick={doCheck} disabled={checking}>{checking ? 'Checking…' : 'Run pre-checks'}</button>
