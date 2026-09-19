@@ -23,6 +23,8 @@ CATALOG: Dict[str, Dict] = {
             "post": [{"apiVersion": "nfd.openshift.io/v1", "kind": "NodeFeatureDiscovery", "metadata": {"name": "nfd-instance", "namespace": "openshift-nfd"}, "spec": {}}]},
     "gpu-operator-certified": {"title": "NVIDIA GPU Operator", "namespace": "nvidia-gpu-operator", "source": "certified-operators", "desc": "Drivers, device plugin and monitoring for GPU pools. Create a ClusterPolicy afterwards."},
     "rhbk-operator": {"title": "Red Hat build of Keycloak", "namespace": "keycloak", "desc": "Keycloak identity server operator; the Apps page deploys an instance with PostgreSQL."},
+    "dell-csm-operator-certified": {"title": "Dell Container Storage Modules", "namespace": "dell-csm-operator", "source": "certified-operators",
+                                    "desc": "Dell CSM Operator (PowerScale, PowerStore, PowerMax, ... CSI drivers). The Dell PowerScale page drives it."},
     "web-terminal": {"title": "Web Terminal", "namespace": "openshift-operators", "all_namespaces": True, "desc": "A terminal with oc/kubectl inside the web console."},
 }
 

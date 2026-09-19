@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .routers import clusters, discovery, checks, ops, day2, apps, templates
 from .routers import auth as auth_router, imported as imported_router, extranodes as extranodes_router, manage as manage_router
+from .routers import powerscale as powerscale_router
 from .settings import STATIC_DIR, LISTEN_HOST, LISTEN_PORT
 from . import auth, imported
 
@@ -23,7 +24,7 @@ _CLUSTER_PATH = re.compile(r"^/api/clusters/([^/]+)(/.*)?$")
 # what a connected (imported) cluster may use; everything else is install-time only
 _IMPORTED_ALLOWED = re.compile(r"^(|/health(/.*)?|/upgrade(/.*)?|/scale(/.*)?|/identity(/.*)?|/certs(/.*)?|/storage(/.*)?|"
                                r"/operators(/.*)?|/backup|/backup/run|/backup/download/[^/]+|/apps(/.*)?|/jobs(/.*)?|/status|/extra-nodes(/.*)?|"
-                               r"/maintenance(/.*)?|/logs(/.*)?|/mustgather(/.*)?|/projects(/.*)?|/capacity)$")
+                               r"/maintenance(/.*)?|/logs(/.*)?|/mustgather(/.*)?|/projects(/.*)?|/capacity|/powerscale(/.*)?)$")
 
 
 def _deny(status: int, detail: str):
@@ -48,7 +49,8 @@ async def _access(request: Request, call_next):
         rest = m.group(2) or ""
         if not _IMPORTED_ALLOWED.match(rest) or (rest == "" and request.method not in ("GET", "PUT")):
             return _deny(409, "not available for a connected cluster")
-        if c.get("read_only") and request.method != "GET" and rest not in ("/extra-nodes/csrs", "/extra-nodes/check", "/maintenance/drain-check"):
+        if c.get("read_only") and request.method != "GET" and rest not in ("/extra-nodes/csrs", "/extra-nodes/check", "/maintenance/drain-check",
+                                                                         "/powerscale/check", "/powerscale/preview", "/powerscale/replication/check"):
             return _deny(403, "read-only connection: changes are disabled")
     return await call_next(request)
 
@@ -77,6 +79,8 @@ app.include_router(ops.iso_router)
 app.include_router(extranodes_router.router)
 app.include_router(extranodes_router.isos)
 app.include_router(manage_router.router)
+app.include_router(powerscale_router.router)
+app.include_router(powerscale_router.bundles)
 app.include_router(discovery.router)
 app.include_router(checks.router)
 app.include_router(ops.router)

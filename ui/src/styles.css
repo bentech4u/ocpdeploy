@@ -118,7 +118,7 @@ button.danger { background: var(--panel); border-color: var(--fail); color: var(
 button.danger:hover { background: var(--fail-soft); }
 button.ghost { border-color: transparent; background: transparent; color: var(--info); }
 button.ghost:hover { background: var(--info-soft); }
-button.small { padding: 4px 9px; font-size: 12px; }
+button.small, .btn.small { padding: 4px 9px; font-size: 12px; }
 button:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }

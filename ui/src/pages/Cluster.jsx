@@ -29,6 +29,7 @@ import Capacity from '../steps/Capacity.jsx'
 import Maintenance from '../steps/Maintenance.jsx'
 import Logs from '../steps/Logs.jsx'
 import Projects from '../steps/Projects.jsx'
+import PowerScale from '../steps/PowerScale.jsx'
 
 /* key, label, component, group, done(spec) */
 const STEPS = [
@@ -59,12 +60,13 @@ const STEPS = [
   ['backup', 'etcd backup', Backup, 'Operate', s => !!s.day2?.backup?.schedule],
   ['power', 'Power', Power, 'Operate', null],
   ['apps', 'Applications', Apps, 'Operate', null],
+  ['powerscale', 'Dell PowerScale', PowerScale, 'Operate', null],
   ['extranodes', 'Add Extra nodes', ExtraNodes, 'Operate', null],
 ]
 
 const TOPOLOGY = { standard: 'Standard', compact: 'Compact 3-node', sno: 'Single node' }
 // pages that work on a connected (imported) cluster; the server enforces the same list
-const IMPORTED_STEPS = ['health', 'capacity', 'maintenance', 'logs', 'projects', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps', 'extranodes']
+const IMPORTED_STEPS = ['health', 'capacity', 'maintenance', 'logs', 'projects', 'upgrade', 'scale', 'identity', 'certs', 'storage', 'operators', 'backup', 'apps', 'powerscale', 'extranodes']
 
 export default function Cluster() {
   const { name } = useParams()

@@ -85,13 +85,36 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   * *Storage & registry* – default storage class, NFS provisioner, LVM Storage, ODF internal mode,
     image registry storage (PVC / emptyDir / removed).
   * *Operators* – curated OLM installs (Virtualization, Logging, GitOps, Pipelines, cert-manager,
-    NMState, LSO, ODF, LVMS, NFD, NVIDIA GPU, Web Terminal) and mirror catalog resources.
+    NMState, LSO, ODF, LVMS, NFD, NVIDIA GPU, Dell CSM, Web Terminal) and mirror catalog resources.
   * *etcd backup* – on demand or on a systemd timer, tarballs kept on the installer host.
   * *Power* – graceful shutdown (backup, workers then masters via VMware Tools) and startup with
     CSR approval.
   * *Applications* – one-click lab workloads in their own namespaces with Routes and generated
     credentials: Gitea, MinIO, Grafana (wired to the cluster Prometheus with a cluster dashboard),
     Keycloak (Red Hat build, via its operator, with PostgreSQL) and Harbor (official Helm chart).
+* **Dell PowerScale (Isilon) CSI** (installed and connected clusters) – install, adopt and upgrade
+  Dell's csi-powerscale driver with the **Helm chart** or the **Dell CSM Operator**, one or more
+  arrays, StorageClasses (NFS, per array / access zone / path / SmartConnect address) and a
+  VolumeSnapshotClass. An existing Helm or operator install is detected and adopted in place; the
+  form is prefilled from the running release, and *Preview changes* shows the Helm values and
+  manifest diff (or the ContainerStorageModule) before anything is applied. Pre-checks gate every
+  install: OneFS API, session vs basic auth (isiAuthType), TLS, access zone, isiPath (with a
+  *Create path* button), NFS service, SmartQuotas / SnapshotIQ / SyncIQ licences, the API user's
+  privileges against Dell's list (with the `isi auth roles modify` fix), NFS and API reachability
+  from a worker node, snapshot CRDs, Dell's tested OpenShift range, image mirrors on disconnected
+  clusters, and StorageClasses that already exist with other (immutable) parameters.
+  * *Replication & DR* – CSM Replication (SyncIQ) between this cluster and a peer (installed or
+    connected here), or inside one cluster. The app does what `repctl cluster inject` does: it
+    installs the replication controller where missing, gives each side a kubeconfig for the other
+    built from the peer's own replication service account (never the admin login; verified before
+    use), writes the controller config, copies array entries so both clusters know both arrays, and
+    creates the replicated StorageClass pair. Replication groups show link state, last sync and
+    last action, with planned / unplanned failover, reprotect, failback (keeping or discarding the
+    data written at the DR site), suspend, resume and sync; risky actions need the group name typed.
+  * *Offline bundle* – the installer needs no internet: upload (or import from a path on the host,
+    or download when online) the csi-isilon and csm-replication charts, helm and repctl; charts are
+    verified against Dell's published digests. Lists every container image with a ready-made
+    `oc image mirror` loop, and an *Image registry* field rewrites the driver images to a mirror.
 * **Cluster templates** – export any cluster as YAML (runtime state, MACs and BMC details stripped;
   secrets optional), keep a template library on the installer host, and create the next cluster
   from a template or by cloning an existing one with a new name, domain and node IP range.
@@ -110,7 +133,7 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
   kubeconfig, username and password (OAuth login) or API token. You accept the API (and OAuth)
   certificate by fingerprint first, with a show/hide certificate viewer. Health, capacity, node
   maintenance, logs and must-gather, projects, upgrades, scaling, identity, certificates, storage,
-  operators, apps and backups work on it; an optional read-only
+  operators, apps, Dell PowerScale and backups work on it; an optional read-only
   mode refuses every change. Nothing about a connected cluster is written to disk (see Security).
 * **Console login** – the first visit asks for an administrator account with a strong password;
   accounts are managed with `ocpdeployctl user set|reset|delete|list`.
@@ -187,6 +210,11 @@ ocpdeployctl user set admin
 * **ISO downloads** for Redfish virtual media use a per-cluster secret URL
   (`/api/iso/<cluster>/<token>/<file>`), since BMCs cannot log in; every other endpoint needs a
   session.
+* **PowerScale array passwords are never stored by the app.** They are sent with the check or
+  install request and only land in the driver's `<release>-creds` secret in the cluster; leaving a
+  password blank on an upgrade keeps the one already in that secret. Replication peers get a
+  kubeconfig built from the other cluster's `dell-replication-controller-sa` token, not from the
+  console's admin credentials; the temporary copy used to verify it lives in tmpfs.
 * The console speaks plain HTTP. Put it behind a TLS reverse proxy (or keep it on a management
   network) so passwords and cluster credentials do not cross the network in clear text.
 
@@ -202,10 +230,12 @@ clusters/<name>/       per-cluster state (git-ignored)
   mirror/              imageset-config.yaml, oc-mirror workspace and cache (disconnected installs)
   backups/             etcd snapshots (etcd-<timestamp>.tar.gz)
   logs/                installer log copies, job outputs
+  powerscale/          generated helm values for the PowerScale driver (mode 700; no passwords)
 bin/<version>/         openshift-install, oc (git-ignored)
 templates/             cluster templates saved from the UI (git-ignored)
 users.json             console accounts, bcrypt hashes (git-ignored)
 work/                  node ISOs and must-gather archives, kept until deleted (git-ignored)
+bundles/dell/          offline Dell CSM files: charts, helm, repctl (mode 700, git-ignored)
 ocpdeployctl           command line: accounts, backups (linked to /usr/local/bin by install.sh)
 install.sh             installer for a new host
 ocpdeploy.service      systemd unit

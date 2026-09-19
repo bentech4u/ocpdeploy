@@ -322,11 +322,80 @@ class BackupSpec(BaseModel):
     keep: int = 7
 
 
+class PowerScaleArray(BaseModel):
+    """One OneFS cluster in the driver's isilon-creds. The password is never stored by the app:
+    it is sent with each install/check request and only lands in the cluster's secret."""
+    name: str = ""                        # clusterName in isilon-creds (logical name, used by StorageClasses)
+    endpoint: str = ""                    # OneFS API host/IP
+    port: int = 8080
+    username: str = ""
+    is_default: bool = False
+    skip_cert_validation: bool = True
+    ca_pem: str = ""                      # CA to trust when skip_cert_validation is off (goes to <release>-certs-N)
+    access_zone: str = "System"
+    isi_path: str = "/ifs/data/csi"
+    az_service_ip: str = ""               # SmartConnect name/IP for NFS traffic; empty = endpoint
+
+
+class PowerScaleClass(BaseModel):
+    name: str = "isilon"
+    array: str = ""                       # clusterName; empty = the default array
+    access_zone: str = "System"
+    isi_path: str = "/ifs/data/csi"
+    az_service_ip: str = ""
+    root_client_enabled: bool = False
+    reclaim_policy: Literal["Delete", "Retain"] = "Delete"
+    binding_mode: Literal["Immediate", "WaitForFirstConsumer"] = "Immediate"
+    default: bool = False
+
+
+class PowerScaleReplication(BaseModel):
+    enabled: bool = False
+    peer: str = ""                        # the other cluster (installed or connected in this app); empty = same cluster
+    local_cluster_id: str = ""            # clusterId of this cluster in the replication config
+    remote_cluster_id: str = ""           # clusterId of the peer ("self" for single-cluster replication)
+    source_array: str = ""                # clusterName of the local array
+    target_array: str = ""                # clusterName of the remote array (as known to the peer's driver)
+    rpo: str = "Five_Minutes"
+    class_name: str = "isilon-replication"
+    remote_class_name: str = "isilon-replication"
+    source_zone: str = "System"
+    target_zone: str = "System"
+    source_path: str = "/ifs/data/csi"
+    target_path: str = "/ifs/data/csi"
+    source_az_service_ip: str = ""
+    target_az_service_ip: str = ""
+    volume_group_prefix: str = "csi"
+    ignore_namespaces: bool = False
+    chart_version: str = ""               # csm-replication chart (helm method)
+
+
+class PowerScaleSpec(BaseModel):
+    method: Literal["helm", "operator"] = "helm"
+    chart_version: str = ""               # csi-isilon chart from the offline bundle (helm method)
+    namespace: str = "isilon"
+    release: str = "isilon"               # helm release (also the prefix of <release>-creds / -certs-N)
+    arrays: List[PowerScaleArray] = Field(default_factory=list)
+    auth_type: int = 1                    # 0 basic, 1 session (OneFS 9.15+ needs 1)
+    enable_quota: bool = True
+    snapshots: bool = True
+    snapshot_class: str = "isilon-snapclass"
+    resizer: bool = True
+    controller_count: int = 2
+    volume_name_prefix: str = "csivol"
+    infra_nodes: bool = False             # also run the node plugin on nodes tainted node-role.kubernetes.io/infra
+    image_registry: str = ""              # disconnected: pull the driver images from this registry
+    log_level: Literal["error", "warn", "info", "debug"] = "info"
+    classes: List[PowerScaleClass] = Field(default_factory=list)
+    replication: PowerScaleReplication = Field(default_factory=PowerScaleReplication)
+
+
 class Day2Spec(BaseModel):
     identity: IdentitySpec = Field(default_factory=IdentitySpec)
     certs: CertsSpec = Field(default_factory=CertsSpec)
     storage: StorageSpec = Field(default_factory=StorageSpec)
     backup: BackupSpec = Field(default_factory=BackupSpec)
+    powerscale: PowerScaleSpec = Field(default_factory=PowerScaleSpec)
 
 
 class ClusterSpec(BaseModel):
