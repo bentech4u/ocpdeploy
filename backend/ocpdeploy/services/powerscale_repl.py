@@ -123,9 +123,8 @@ def _can_list_rgs(kubeconfig_text: str, spec: ClusterSpec) -> Tuple[bool, str]:
         out = (r.stdout + r.stderr).strip()
         return out.startswith("yes"), out[-160:]
     finally:
-        for p in d.iterdir():
-            p.unlink()
-        d.rmdir()
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)      # oc also leaves a .kube cache directory here
 
 
 def controller_state(side: Side) -> Dict:
