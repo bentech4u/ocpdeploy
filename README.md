@@ -110,11 +110,15 @@ two Linux VMs for HAProxy, and you want repeatable installs without hand-editing
     use), writes the controller config, copies array entries so both clusters know both arrays, and
     creates the replicated StorageClass pair. Replication groups show link state, last sync and
     last action, with planned / unplanned failover, reprotect, failback (keeping or discarding the
-    data written at the DR site), suspend, resume and sync; risky actions need the group name typed.
+    data written at the DR site), suspend, resume and sync; the menu offers only what fits the group's
+    role and link state, and risky actions need the group name typed. Tested end to end with Helm and
+    with the CSM Operator (OpenShift 4.22, OneFS 9.15, encrypted SyncIQ).
   * *Offline bundle* – the installer needs no internet: upload (or import from a path on the host,
     or download when online) the csi-isilon and csm-replication charts, helm and repctl; charts are
     verified against Dell's published digests. Lists every container image with a ready-made
     `oc image mirror` loop, and an *Image registry* field rewrites the driver images to a mirror.
+  * Step-by-step guide (array preparation, both install methods, replication, failover and failback of
+    an application, clean-up, troubleshooting): [docs/dell-powerscale.md](docs/dell-powerscale.md).
 * **Cluster templates** – export any cluster as YAML (runtime state, MACs and BMC details stripped;
   secrets optional), keep a template library on the installer host, and create the next cluster
   from a template or by cloning an existing one with a new name, domain and node IP range.
