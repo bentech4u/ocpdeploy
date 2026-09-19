@@ -57,7 +57,18 @@ export default function PowerScaleRepl(p) {
     return run('/powerscale/replication/setup', body(), `${r.peer ? '' : 'SINGLE-CLUSTER replication (no peer selected)! '}Set up replication ${p.name} → ${r.peer || 'same cluster'} (${r.source_array} → ${r.target_array}, RPO ${r.rpo})? It installs the replication controller where missing, wires the clusters with a service-account identity and creates the replicated StorageClasses.`)
   }
   const actions = data?.actions || {}
-  const allowed = (g) => Object.entries(actions).filter(([, a]) => a.on === 'any' || (a.on === 'source') === g.is_source)
+  // what makes sense in the group's current state (the driver refuses the rest, e.g. reprotect before any failover)
+  const WHEN = {
+    FAILOVER_REMOTE: g => g.is_source && g.link_state !== 'FAILEDOVER',
+    UNPLANNED_FAILOVER_LOCAL: g => !g.is_source && g.link_state !== 'FAILEDOVER',
+    REPROTECT_LOCAL: g => !g.is_source && g.link_state === 'FAILEDOVER',
+    FAILBACK_LOCAL: g => g.is_source && g.link_state === 'FAILEDOVER',
+    ACTION_FAILBACK_DISCARD_CHANGES_LOCAL: g => g.is_source && g.link_state === 'FAILEDOVER',
+    SUSPEND: g => g.is_source && g.link_state !== 'FAILEDOVER' && g.link_state !== 'SUSPENDED',
+    RESUME: g => g.is_source && g.link_state === 'SUSPENDED',
+    SYNC: g => g.is_source && g.link_state !== 'FAILEDOVER' && g.link_state !== 'SUSPENDED',
+  }
+  const allowed = (g) => Object.entries(actions).filter(([k]) => (WHEN[k] || (() => true))(g))
   const busy = (g) => !!g.action || (g.state || '').endsWith('_IN_PROGRESS')
   const startAction = (g, action) => { setAct({ group: g, action }); setConfirmName('') }
   const doAction = async () => {
